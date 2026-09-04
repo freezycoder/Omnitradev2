@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: omnitrade-api
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: ENV
+        value: production
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: FINNHUB_API_KEY
+        sync: false
+      - key: FRED_API_KEY
+        sync: false
+      - key: SEC_EDGAR_USER_AGENT
+        sync: false
+      - key: OMNITRADE_CORS_ORIGINS
+        sync: false
+      - key: OMNITRADE_WRITE_MODE
+        value: read_only
+      # Set this to a persistent disk mount path when one is attached.
+      - key: OMNITRADE_DATA_DIR
+        value: data_store
+      - key: OMNITRADE_DATA_SEED_VERSION
+        value: 2026-06-23.3

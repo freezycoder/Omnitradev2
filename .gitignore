@@ -1,0 +1,82 @@
+# macOS / editor noise
+.DS_Store
+*.swp
+*.swo
+
+# Local agent/tooling state
+.aidesigner/*
+!.aidesigner/.gitkeep
+.claude/
+.claude-flow/
+.mcp.json
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+.envrc
+.direnv/
+*.secrets
+*.secrets.*
+credentials.json
+service-account*.json
+.npmrc
+.pypirc
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Frontend
+node_modules/
+.next/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.vercel/
+frontend/*.log
+*.log
+
+# Runtime data and caches. Keep demo seed data, not local market state.
+data_store/*
+!data_store/.gitkeep
+!data_store/demo_data.json
+!data_store/scan_cache/
+data_store/scan_cache/*
+!data_store/scan_cache/.gitkeep
+!data_store/ticker_cache/
+data_store/ticker_cache/*
+!data_store/ticker_cache/.gitkeep
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.sqlite-journal
+*.sqlite3-journal
+*.db-wal
+*.sqlite-wal
+*.sqlite3-wal
+*.db-shm
+*.sqlite-shm
+*.sqlite3-shm
+*.bak
+
+# Generated desktop bundles and local reports
+*.app/
+*.docx
+PROJECT_AUDIT.md
+WEB_APP_REPORT.md
+.vercel

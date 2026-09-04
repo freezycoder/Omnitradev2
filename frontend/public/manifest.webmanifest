@@ -1,0 +1,23 @@
+{
+  "name": "OmniTrade Research",
+  "short_name": "OmniTrade",
+  "description": "Research and portfolio analytics for OmniTrade",
+  "start_url": "/overview",
+  "display": "standalone",
+  "background_color": "#0f0f0f",
+  "theme_color": "#171717",
+  "icons": [
+    {
+      "src": "/brand/omnitrade-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/brand/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

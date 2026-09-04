@@ -1,0 +1,135 @@
+/* ---- Route transition system ---- */
+:root {
+  --route-out: 170ms;
+  --route-in: 460ms;
+  --route-ease-out: cubic-bezier(0.4, 0, 1, 1);
+  --route-ease-in: cubic-bezier(0.16, 1, 0.3, 1);
+  --route-shift: 26px;
+  --route-dir: 1;
+}
+
+.route-view {
+  will-change: transform, opacity, filter;
+}
+
+.route-view[data-phase="out"] {
+  animation: route-exit var(--route-out) var(--route-ease-out) both;
+}
+
+.route-view[data-phase="in"] {
+  animation: route-enter var(--route-in) var(--route-ease-in) both;
+}
+
+@keyframes route-exit {
+  from { opacity: 1; transform: translate3d(0, 0, 0); filter: blur(0); }
+  to {
+    opacity: 0;
+    transform: translate3d(calc(var(--route-dir) * var(--route-shift) * -1), 0, 0);
+    filter: blur(3px);
+  }
+}
+
+@keyframes route-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(calc(var(--route-dir) * var(--route-shift)), 6px, 0);
+    filter: blur(5px);
+  }
+  to { opacity: 1; transform: translate3d(0, 0, 0); filter: blur(0); }
+}
+
+/* Gold rail that runs in the direction of travel while the route swaps */
+.route-rail {
+  position: fixed;
+  inset-inline: 0;
+  top: 0;
+  z-index: 40;
+  height: 2px;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.route-rail::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--accent-strong), transparent);
+  transform-origin: left;
+  animation: route-rail calc(var(--route-out) + var(--route-in)) var(--route-ease-in) both;
+}
+
+.route-rail[data-dir="-1"]::after { transform-origin: right; }
+
+@keyframes route-rail {
+  0% { transform: scaleX(0); opacity: 1; }
+  70% { transform: scaleX(1); opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0; }
+}
+
+/* ---- Lightweight loading skeleton shown during the swap ---- */
+.route-host { position: relative; }
+
+.route-skeleton {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  display: grid;
+  gap: 18px;
+  align-content: start;
+  animation: skeleton-fade 220ms var(--route-ease-in) both;
+}
+
+.route-skeleton[data-phase="out"] {
+  animation: skeleton-fade-out 200ms var(--route-ease-out) both;
+}
+
+@keyframes skeleton-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes skeleton-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.skeleton-block {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  background: color-mix(in srgb, var(--surface, #161616) 88%, transparent);
+}
+
+.skeleton-block::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent-strong) 14%, transparent),
+    transparent
+  );
+  transform: translateX(-100%);
+  animation: skeleton-shimmer 1.15s linear infinite;
+}
+
+@keyframes skeleton-shimmer {
+  to { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-view[data-phase="out"],
+  .route-view[data-phase="in"] {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
+
+  .route-rail { display: none; }
+
+  .route-skeleton { animation: none !important; }
+  .skeleton-block::after { animation: none !important; }
+}
