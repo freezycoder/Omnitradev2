@@ -4,14 +4,62 @@ Native desktop packaging for OmniTrade (macOS and Windows) built with
 [Tauri](https://tauri.app). The desktop app wraps the **existing** Next.js
 frontend and FastAPI/Python backend — no research or business logic is changed.
 
-The end-user experience:
+The folder `desktop/` lives **inside this git repo**. It is not `~/Desktop`.
+Run every command below from the repository root (the folder that contains
+`README.md` and `desktop/build_desktop.sh`).
+
+```bash
+cd ~/Omnitradev2
+ls desktop/build_desktop.sh
+```
+
+## How to run (from source)
+
+1. Install tools once: Python 3.12, Node 22, Rust, Tauri CLI (`cargo install tauri-cli --version "^2" --locked`). On macOS also run `xcode-select --install` if needed.
+2. Create a project venv and install backend deps **plus PyInstaller** (the build script uses `.venv` when it exists):
+
+   ```bash
+   python3 -m venv .venv
+   .venv/bin/pip install --upgrade pip
+   .venv/bin/pip install -r requirements.txt pyinstaller
+   npm --prefix frontend install
+   ```
+
+   Prefer Python 3.12. Homebrew `python3.14` often fails (`No module named PyInstaller` or package build errors).
+
+3. Put Cargo on your `PATH` and build. The first build can take 10–30 minutes. Leave the terminal open.
+
+   ```bash
+   export PATH="$HOME/.cargo/bin:$PATH"
+   bash desktop/build_desktop.sh
+   ```
+
+   `~/.cargo/bin/cargo-tauri` is the compiler CLI, not the OmniTrade app.
+
+4. Only after the script finishes with no error, open the app:
+
+   ```bash
+   # macOS
+   open desktop/src-tauri/target/release/bundle/macos/OmniTrade.app
+   ```
+
+   Windows installers land under `desktop/src-tauri/target/release/bundle/nsis/` or `bundle/msi/`.
+
+The window starts the bundled FastAPI backend by itself. Do not also run
+`./run_api.sh` or `npm run dev`.
+
+If `OmniTrade.app does not exist`, the build has not completed. Scroll up in
+Terminal for the first error (missing PyInstaller, wrong directory, or Rust
+tools not on `PATH`).
+
+## After you have an installer
 
 1. Download `OmniTrade.dmg` (macOS) / `OmniTrade-setup.exe` (Windows).
 2. Drag `OmniTrade.app` to Applications (macOS) / run the installer (Windows).
-3. Double-click to launch. The app starts all local services automatically.
+3. Double-click to launch. The app starts all required local services automatically.
 
-No Python, Node, npm, Terminal, or virtual environment is required on the user's
-machine.
+No Python, Node, npm, Terminal, or virtual environment is required for that
+installed-app path.
 
 ## Architecture
 

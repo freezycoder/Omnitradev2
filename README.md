@@ -2,6 +2,105 @@
 
 OmniTrade is a local stock-screening dashboard with a Streamlit app, a FastAPI API, and a Next.js frontend.
 
+## How to run
+
+You must be **inside this repository folder** (the directory that contains `README.md` and `desktop/`).  
+`desktop/` is a folder in the repo. It is **not** your Mac Desktop (`~/Desktop`).
+
+```bash
+cd ~/Omnitradev2    # or wherever you cloned this repo
+ls README.md desktop/build_desktop.sh
+```
+
+If `ls desktop/build_desktop.sh` fails, you are in the wrong folder or on the wrong branch.
+
+---
+
+### Option A — website in the browser (fastest)
+
+One-time setup:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+npm --prefix frontend install
+```
+
+Every time you want to use it, open **two** Terminal tabs from the repo root:
+
+```bash
+./run_api.sh --no-reload
+```
+
+```bash
+cd frontend
+npm run dev
+```
+
+Then open [http://127.0.0.1:3000/overview](http://127.0.0.1:3000/overview).
+
+On a Mac you can instead double-click `run_omnitrade_web.command`.
+
+---
+
+### Option B — native desktop app (`OmniTrade.app`)
+
+This builds a real Mac/Windows app. The **first** build can take 10–30 minutes. That wait is compiling the app, not a market scan. Later launches are quick.
+
+One-time tools: Python 3.12 (3.14 often fails), Node 22, Rust, and the Tauri CLI.
+
+```bash
+# Python 3.12 recommended on Apple Silicon
+brew install python@3.12
+/opt/homebrew/opt/python@3.12/bin/python3.12 -m venv .venv
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -r requirements.txt pyinstaller
+
+npm --prefix frontend install
+
+# Rust + Tauri CLI (skip if `cargo tauri --version` already works)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+export PATH="$HOME/.cargo/bin:$PATH"
+cargo install tauri-cli --version "^2" --locked
+xcode-select --install   # macOS only, if Xcode tools are missing
+```
+
+Build from the **repo root** (leave the terminal open until it finishes with no error):
+
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+bash desktop/build_desktop.sh
+```
+
+When that succeeds, open the app:
+
+```bash
+# macOS
+open desktop/src-tauri/target/release/bundle/macos/OmniTrade.app
+```
+
+On Windows, run the installer under `desktop/src-tauri/target/release/bundle/nsis/` or `bundle/msi/`.
+
+The desktop window starts its own backend. You do **not** run `./run_api.sh` or `npm run dev` for this option.
+
+`~/.cargo/bin/cargo-tauri` is the **build tool**, not the app.
+
+---
+
+### Common mistakes
+
+| What you tried | Why it failed |
+|---|---|
+| `bash desktop/build_desktop.sh` from `~` | You are not in the repo. `cd` into `Omnitradev2` first. |
+| `ls desktop/build desktop.sh` | The file is `desktop/build_desktop.sh` (one word, underscore). |
+| `No module named PyInstaller` | Create `.venv` and `pip install -r requirements.txt pyinstaller`, then rebuild. |
+| `OmniTrade.app does not exist` | The build has not finished yet. Do not `open` the app until `build_desktop.sh` exits cleanly. |
+| `ls desktop/build_desktop.sh` missing on `main` | Desktop packaging lives on this branch. Run `git checkout cursor/setup-dev-environment-30e7`. |
+
+**Refresh Scan** in the UI is a live market pull. It is separate from the 10–30 minute first build. Opening cached pages is fast; each Refresh Scan still fetches live data.
+
+More desktop detail: [`desktop/README.md`](desktop/README.md). Hosted Vercel + Render: [`DEPLOYMENT.md`](DEPLOYMENT.md).
+
 ## What is included
 
 - Streamlit dashboard: `app.py`
