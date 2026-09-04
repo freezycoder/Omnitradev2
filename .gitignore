@@ -80,3 +80,14 @@ data_store/ticker_cache/*
 PROJECT_AUDIT.md
 WEB_APP_REPORT.md
 .vercel
+
+# Desktop app build artifacts
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/src-tauri/resources/backend/
+desktop/backend/.build/
+dist/
+
+# Next.js AI-agent generated files
+frontend/AGENTS.md
+frontend/CLAUDE.md
