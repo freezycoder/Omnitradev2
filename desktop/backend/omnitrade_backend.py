@@ -19,6 +19,8 @@ import argparse
 import os
 import shutil
 import sys
+import threading
+import time
 from pathlib import Path
 
 
@@ -74,6 +76,50 @@ def _apply_desktop_defaults() -> None:
     )
 
 
+def _parent_alive(parent_pid: int) -> bool:
+    if os.name == "posix":
+        # Once the desktop shell dies, this process is reparented, so its parent
+        # PID no longer matches the one the shell passed in.
+        return os.getppid() == parent_pid
+    if os.name == "nt":  # pragma: no cover - exercised on Windows only
+        import ctypes
+
+        process_query = 0x1000  # PROCESS_QUERY_LIMITED_INFORMATION
+        still_active = 259
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(process_query, False, parent_pid)
+        if not handle:
+            return False
+        exit_code = ctypes.c_ulong()
+        ok = kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+        kernel32.CloseHandle(handle)
+        return bool(ok) and exit_code.value == still_active
+    return True
+
+
+def _start_parent_watchdog() -> None:
+    """Exit the backend if the desktop shell that launched it goes away.
+
+    This guarantees the backend does not outlive the app even on abnormal
+    termination (crash / SIGKILL) where the shell cannot send a stop signal.
+    """
+    raw = os.environ.get("OMNITRADE_PARENT_PID")
+    if not raw:
+        return
+    try:
+        parent_pid = int(raw)
+    except ValueError:
+        return
+
+    def _watch() -> None:
+        while True:
+            time.sleep(2.0)
+            if not _parent_alive(parent_pid):
+                os._exit(0)
+
+    threading.Thread(target=_watch, daemon=True, name="parent-watchdog").start()
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="omnitrade-backend")
     parser.add_argument("--host", default=os.environ.get("OMNITRADE_HOST", "127.0.0.1"))
@@ -84,6 +130,7 @@ def main(argv: list[str] | None = None) -> None:
 
     _apply_desktop_defaults()
     data_dir = _prepare_data_dir()
+    _start_parent_watchdog()
 
     # Import uvicorn/app only after the environment has been prepared so that
     # config.settings picks up OMNITRADE_DATA_DIR and CORS settings.

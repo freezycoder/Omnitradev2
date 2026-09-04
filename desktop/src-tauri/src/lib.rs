@@ -99,6 +99,8 @@ fn spawn_backend(state: &BackendState) -> Result<Child, String> {
         .arg(state.port.to_string())
         .env("OMNITRADE_DATA_DIR", &state.data_dir)
         .env("OMNITRADE_WRITE_MODE", "local")
+        // Let the backend self-terminate if this shell dies abnormally.
+        .env("OMNITRADE_PARENT_PID", std::process::id().to_string())
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
 
