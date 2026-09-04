@@ -19,12 +19,19 @@ export type BackendStatus = {
 
 function getInvoke(): InvokeFn | null {
   if (typeof window === "undefined") return null;
-  const tauri = (window as unknown as { __TAURI__?: { core?: { invoke?: InvokeFn } } }).__TAURI__;
-  return tauri?.core?.invoke ?? null;
+  const w = window as unknown as {
+    __TAURI__?: { core?: { invoke?: InvokeFn } };
+    __TAURI_INTERNALS__?: { invoke?: InvokeFn };
+  };
+  // `__TAURI_INTERNALS__.invoke` is always injected into a Tauri v2 webview,
+  // regardless of the `withGlobalTauri` setting, so it is the most reliable path.
+  return w.__TAURI_INTERNALS__?.invoke ?? w.__TAURI__?.core?.invoke ?? null;
 }
 
 export function isDesktopApp(): boolean {
-  return getInvoke() !== null;
+  if (typeof window === "undefined") return false;
+  const w = window as unknown as { isTauri?: boolean; __TAURI_INTERNALS__?: unknown };
+  return w.isTauri === true || w.__TAURI_INTERNALS__ != null || getInvoke() !== null;
 }
 
 export async function getSettings(): Promise<DesktopSettings> {
