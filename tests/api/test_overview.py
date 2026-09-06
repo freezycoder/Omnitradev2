@@ -193,8 +193,15 @@ def test_overview_route_uses_fallback_on_timeout(monkeypatch):
         lambda *, universe_key, reason: {"source": "demo", "api_note": reason},
     )
 
+    from tests.api.request_helpers import fake_request
+
     payload = asyncio.run(
-        main.overview(refresh=True, data_mode=main.DATA_MODE_AUTO, universe="global")
+        main.overview(
+            fake_request(),
+            refresh=True,
+            data_mode=main.DATA_MODE_AUTO,
+            universe="global",
+        )
     )
 
     assert calls == ["overview", "overview_fallback"]

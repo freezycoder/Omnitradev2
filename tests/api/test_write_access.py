@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from api import main
+from tests.api.request_helpers import fake_request
 
 
 PERFORMANCE_LOG_PAYLOAD = {
@@ -35,11 +36,13 @@ def test_user_mutations_are_blocked_by_default(monkeypatch, operation):
 
     with pytest.raises(HTTPException) as exc_info:
         if operation == "performance_log":
-            asyncio.run(main.performance_log(main.PerformanceLogMutation(**PERFORMANCE_LOG_PAYLOAD)))
+            asyncio.run(
+                main.performance_log(main.PerformanceLogMutation(**PERFORMANCE_LOG_PAYLOAD), fake_request())
+            )
         elif operation == "watchlist_add":
-            main.add_watchlist_item(main.WatchlistMutation(ticker="AAPL"))
+            main.add_watchlist_item(main.WatchlistMutation(ticker="AAPL"), fake_request())
         else:
-            main.delete_watchlist_item("AAPL")
+            main.delete_watchlist_item("AAPL", fake_request())
 
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == {
@@ -67,7 +70,7 @@ def test_cors_allows_only_declared_methods_without_credentials():
 
     assert middleware.kwargs["allow_credentials"] is False
     assert middleware.kwargs["allow_methods"] == ["GET", "POST", "DELETE"]
-    assert middleware.kwargs["allow_headers"] == ["Content-Type"]
+    assert middleware.kwargs["allow_headers"] == ["Content-Type", "X-OmniTrade-Write-Token"]
 
 
 def test_production_cors_does_not_enable_private_network_regex_by_default(monkeypatch):
@@ -96,7 +99,7 @@ def test_local_mode_allows_watchlist_mutation(monkeypatch):
         lambda: [{"ticker": "AAPL", "source": "test"}],
     )
 
-    response = main.add_watchlist_item(main.WatchlistMutation(ticker="aapl", source="test"))
+    response = main.add_watchlist_item(main.WatchlistMutation(ticker="aapl", source="test"), fake_request())
 
     assert added == [("AAPL", "test")]
     assert response["watchlist"] == [{"ticker": "AAPL", "source": "test"}]
@@ -118,7 +121,9 @@ def test_local_mode_allows_performance_log_mutation(monkeypatch):
 
     monkeypatch.setattr(main, "_log_performance_entry", fake_log)
 
-    response = asyncio.run(main.performance_log(main.PerformanceLogMutation(**PERFORMANCE_LOG_PAYLOAD)))
+    response = asyncio.run(
+        main.performance_log(main.PerformanceLogMutation(**PERFORMANCE_LOG_PAYLOAD), fake_request())
+    )
 
     assert len(captured) == 1
     assert response["entry"]["ticker"] == "AAPL"

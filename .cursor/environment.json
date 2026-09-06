@@ -1,0 +1,26 @@
+{
+  "name": "OmniTrade",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "api",
+      "command": "./run_api.sh --no-reload --host 127.0.0.1 --port 8788",
+      "description": "FastAPI backend serving the OmniTrade JSON API on http://127.0.0.1:8788 (write mode: local)."
+    },
+    {
+      "name": "frontend",
+      "command": "cd frontend && NEXT_PUBLIC_OMNITRADE_API_URL=http://127.0.0.1:8788 npm run dev",
+      "description": "Next.js dev server for the OmniTrade dashboard on http://127.0.0.1:3000/overview."
+    },
+    {
+      "name": "streamlit",
+      "command": "./run.sh --headless --host 127.0.0.1 --port 8501",
+      "description": "Streamlit dashboard on http://127.0.0.1:8501."
+    }
+  ],
+  "ports": [
+    { "name": "frontend", "port": 3000 },
+    { "name": "api", "port": 8788 },
+    { "name": "streamlit", "port": 8501 }
+  ]
+}

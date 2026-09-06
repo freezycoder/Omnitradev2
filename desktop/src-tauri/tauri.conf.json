@@ -1,0 +1,41 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OmniTrade",
+  "version": "0.1.0",
+  "identifier": "com.omnitrade.desktop",
+  "build": {
+    "frontendDist": "../../frontend/out"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Finance",
+    "shortDescription": "OmniTrade research and portfolio terminal",
+    "longDescription": "OmniTrade is a local stock-screening and portfolio-analytics desktop app. It bundles its own analytics backend so no Python, Node, or terminal setup is required.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "resources/backend": "backend"
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine"
+      }
+    }
+  }
+}

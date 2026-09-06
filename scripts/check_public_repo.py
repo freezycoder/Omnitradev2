@@ -21,7 +21,7 @@ ALLOWED_SEED_TABLES = {
     "sqlite_sequence",
     "strategy_history_snapshots",
 }
-ALLOWED_BINARY_SUFFIXES = {".gif", ".gz", ".ico", ".jpeg", ".jpg", ".pdf", ".png", ".webp"}
+ALLOWED_BINARY_SUFFIXES = {".gif", ".gz", ".icns", ".ico", ".jpeg", ".jpg", ".pdf", ".png", ".webp"}
 MAX_SEED_COMPRESSED_BYTES = 10 * 1024 * 1024
 MAX_SEED_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
 PLACEHOLDERS = {

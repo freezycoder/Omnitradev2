@@ -7,7 +7,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+def _resolve_base_dir() -> Path:
+    """Resolve the directory that holds bundled, read-only resources.
+
+    In a normal source checkout this is the repository root. When the backend is
+    packaged with PyInstaller (desktop app), the bundled resources such as
+    ``seed_data/`` live next to the frozen modules under ``sys._MEIPASS``. This
+    only affects where read-only bundled assets are located; the writable data
+    directory (``DATA_DIR``) is still controlled by ``OMNITRADE_DATA_DIR``.
+    """
+
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
+    return Path(__file__).resolve().parent.parent
+
+
+BASE_DIR = _resolve_base_dir()
 DATA_DIR = Path(os.environ.get("OMNITRADE_DATA_DIR", BASE_DIR / "data_store")).expanduser()
 ENV_FILE = BASE_DIR / ".env"
 SECRETS_FILE = Path.home() / ".config" / "omnitrade" / "secrets.env"

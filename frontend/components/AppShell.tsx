@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 import { RouteTransition } from "./RouteTransition";
+import { SettingsButton } from "./SettingsPanel";
 
 type NavigationItem = {
   href: string;
@@ -123,9 +124,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <NavigationGroups pathname={pathname} />
           </nav>
 
-          <div className="mt-8 flex items-center gap-3 border-t border-[var(--line-soft)] px-5 pt-5">
-            <span aria-hidden="true" className="pulse-dot h-1.5 w-1.5 bg-[var(--green)] text-[var(--green)]" />
-            <span className="mono text-[10px] uppercase tracking-[0.14em] text-[var(--dim)]">Market live // NYS</span>
+          <div className="mt-8 space-y-4 border-t border-[var(--line-soft)] px-5 pt-5">
+            <div className="px-0">
+              <SettingsButton />
+            </div>
+            <div className="flex items-center gap-3">
+              <span aria-hidden="true" className="pulse-dot h-1.5 w-1.5 bg-[var(--green)] text-[var(--green)]" />
+              <span className="mono text-[10px] uppercase tracking-[0.14em] text-[var(--dim)]">Market live // NYS</span>
+            </div>
           </div>
         </aside>
 
