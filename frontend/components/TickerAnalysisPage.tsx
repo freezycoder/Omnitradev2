@@ -20,6 +20,7 @@ import {
   TickerPayload
 } from "@/lib/api";
 import { asNumber, formatCurrency, formatLargeNumber, formatPct, formatSignedPct, pickArray, pickRecord, sentenceCase } from "@/lib/format";
+import { safeHttpUrl } from "@/lib/urls";
 
 type Row = Record<string, unknown>;
 type DataMode = "auto" | "live" | "demo";
@@ -34,7 +35,16 @@ const newsColumns: DataTableColumn<Row>[] = [
     key: "url",
     header: "Link",
     sortable: false,
-    render: (row) => row.url ? <a className="text-link" href={String(row.url)} target="_blank" rel="noreferrer">Open</a> : "N/A"
+    render: (row) => {
+      const href = safeHttpUrl(row.url);
+      return href ? (
+        <a className="text-link" href={href} target="_blank" rel="noreferrer">
+          Open
+        </a>
+      ) : (
+        "N/A"
+      );
+    }
   }
 ];
 
@@ -64,7 +74,16 @@ const secEventColumns: DataTableColumn<Row>[] = [
     key: "url",
     header: "Filing",
     sortable: false,
-    render: (row) => row.url ? <a className="text-link" href={String(row.url)} target="_blank" rel="noreferrer">Open SEC</a> : "N/A"
+    render: (row) => {
+      const href = safeHttpUrl(row.url);
+      return href ? (
+        <a className="text-link" href={href} target="_blank" rel="noreferrer">
+          Open SEC
+        </a>
+      ) : (
+        "N/A"
+      );
+    }
   }
 ];
 

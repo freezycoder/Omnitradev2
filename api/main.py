@@ -9,14 +9,22 @@ from dataclasses import asdict, is_dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 from threading import Lock, Thread
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from api.response_cache import TtlResponseCache
+from api.security import (
+    REFRESH_RATE_LIMIT,
+    SecurityHeadersMiddleware,
+    enforce_rate_limit,
+    enforce_write_token,
+    is_production,
+    public_error_message,
+)
 from config.access import api_capabilities_snapshot
 
 
@@ -38,19 +46,19 @@ _ANALYTICS_RESPONSE_CACHE = TtlResponseCache()
 
 
 class WatchlistMutation(BaseModel):
-    ticker: str
-    source: str = "frontend"
+    ticker: str = Field(min_length=1, max_length=12, pattern=r"^[A-Za-z0-9.\-]+$")
+    source: str = Field(default="frontend", min_length=1, max_length=32, pattern=r"^[A-Za-z0-9_\-]+$")
 
 
 class PerformanceLogMutation(BaseModel):
-    ticker: str
-    strategy_family: str
+    ticker: str = Field(min_length=1, max_length=12, pattern=r"^[A-Za-z0-9.\-]+$")
+    strategy_family: Literal["short_term_day", "short_term_swing"]
     opened_on: date
     closed_on: date
     score: float = Field(ge=0, le=100)
     entry_price: float = Field(gt=0)
     exit_price: float = Field(gt=0)
-    status: str
+    status: Literal["hit_target", "hit_stop", "expired"]
 
 
 DEFAULT_CORS_ORIGINS = [
@@ -89,19 +97,25 @@ def _cors_origin_regex(
     return None if active_environment == "production" else PRIVATE_NETWORK_ORIGIN_REGEX
 
 
+_HIDE_DOCS = is_production()
+
 app = FastAPI(
     title="OmniTrade API",
     version="1.0.0",
     description="JSON API adapter over the existing OmniTrade application services.",
+    docs_url=None if _HIDE_DOCS else "/docs",
+    redoc_url=None if _HIDE_DOCS else "/redoc",
+    openapi_url=None if _HIDE_DOCS else "/openapi.json",
 )
 
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[*DEFAULT_CORS_ORIGINS, *_env_csv("OMNITRADE_CORS_ORIGINS")],
     allow_origin_regex=_cors_origin_regex(),
     allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "X-OmniTrade-Write-Token"],
 )
 
 
@@ -111,19 +125,21 @@ def _bootstrap_database() -> None:
     bootstrap_database()
 
 
-def _require_user_mutation(operation: str) -> None:
+def _require_user_mutation(operation: str, request: Request | None = None) -> None:
     capabilities = api_capabilities_snapshot()
-    if capabilities["user_mutations_enabled"]:
-        return
-    log.warning("Blocked %s because the API is running in read-only mode", operation)
-    raise HTTPException(
-        status_code=403,
-        detail={
-            "error": "read_only_deployment",
-            "operation": operation,
-            "message": capabilities["message"],
-        },
-    )
+    if not capabilities["user_mutations_enabled"]:
+        log.warning("Blocked %s because the API is running in read-only mode", operation)
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "read_only_deployment",
+                "operation": operation,
+                "message": capabilities["message"],
+            },
+        )
+    if request is not None:
+        enforce_write_token(request)
+        enforce_rate_limit(request, bucket="mutation")
 
 
 def _dataframe_to_records(frame: Any) -> list[dict[str, Any]]:
@@ -226,7 +242,7 @@ async def _run_service(
             detail={
                 "error": "service_error",
                 "service": name,
-                "message": str(exc),
+                "message": public_error_message(exc),
             },
         ) from exc
 
@@ -763,16 +779,18 @@ def _startup() -> None:
 @app.get("/")
 def root() -> dict[str, Any]:
     capabilities = api_capabilities_snapshot()
-    return {
+    payload = {
         "status": "ok",
         "service": "omnitrade-api",
-        "message": "This is the API server. Open the frontend at http://127.0.0.1:3000/overview.",
-        "frontend_url": "http://127.0.0.1:3000/overview",
-        "docs_url": "/docs",
+        "message": "This is the API server.",
         "health_url": "/api/health",
         "capabilities_url": "/api/capabilities",
         "write_mode": capabilities["write_mode"],
     }
+    if not is_production():
+        payload["frontend_url"] = "http://127.0.0.1:3000/overview"
+        payload["docs_url"] = "/docs"
+    return payload
 
 
 @app.get("/api/health")
@@ -812,8 +830,8 @@ async def performance_lab(
 
 
 @app.post("/api/performance-log")
-async def performance_log(payload: PerformanceLogMutation) -> Any:
-    _require_user_mutation("performance_log")
+async def performance_log(payload: PerformanceLogMutation, request: Request) -> Any:
+    _require_user_mutation("performance_log", request)
 
     def log_and_invalidate() -> dict[str, Any]:
         result = _log_performance_entry(payload)
@@ -938,14 +956,16 @@ async def kronos_forecast(
 
 @app.get("/api/forecast-health")
 def kronos_forecast_health() -> Any:
-    from providers.forecast.kronos_client import KronosUnavailable, health, kronos_enabled, kronos_service_url
+    from providers.forecast.kronos_client import KronosUnavailable, health, kronos_enabled
 
     if not kronos_enabled():
         return {"enabled": False, "status": "disabled", "message": "Kronos forecasting is disabled for this deployment."}
     try:
-        return {"enabled": True, "status": "ok", "service_url": kronos_service_url(), **health()}
-    except KronosUnavailable as exc:
-        return {"enabled": True, "status": "unavailable", "message": str(exc)}
+        payload = {"enabled": True, "status": "ok", **health()}
+        payload.pop("service_url", None)
+        return payload
+    except KronosUnavailable:
+        return {"enabled": True, "status": "unavailable", "message": "Forecast service is unavailable."}
 
 
 @app.get("/api/watchlist")
@@ -954,8 +974,8 @@ def watchlist() -> Any:
 
 
 @app.post("/api/watchlist")
-def add_watchlist_item(payload: WatchlistMutation) -> Any:
-    _require_user_mutation("watchlist_add")
+def add_watchlist_item(payload: WatchlistMutation, request: Request) -> Any:
+    _require_user_mutation("watchlist_add", request)
     from storage.repositories.watchlist_repository import add_to_watchlist
 
     ticker = payload.ticker.upper().strip()
@@ -966,12 +986,14 @@ def add_watchlist_item(payload: WatchlistMutation) -> Any:
 
 
 @app.delete("/api/watchlist/{ticker}")
-def delete_watchlist_item(ticker: str) -> Any:
-    _require_user_mutation("watchlist_delete")
+def delete_watchlist_item(ticker: str, request: Request) -> Any:
+    _require_user_mutation("watchlist_delete", request)
     from storage.repositories.watchlist_repository import remove_from_watchlist
 
     normalized_ticker = ticker.upper().strip()
-    if not normalized_ticker:
+    if not normalized_ticker or len(normalized_ticker) > 12 or not all(
+        ch.isalnum() or ch in ".-" for ch in normalized_ticker
+    ):
         raise HTTPException(status_code=400, detail={"error": "invalid_ticker", "message": "Ticker is required."})
     remove_from_watchlist(normalized_ticker)
     return _json_response({"status": "ok", "watchlist": _watchlist_payload()})
@@ -979,10 +1001,13 @@ def delete_watchlist_item(ticker: str) -> Any:
 
 @app.get("/api/overview")
 async def overview(
+    request: Request,
     refresh: bool = Query(default=False, description="Run a fresh scan instead of returning cached overview data."),
     data_mode: str = Query(default=DATA_MODE_AUTO, description="auto, live, or demo"),
     universe: str = Query(default="global", description="global or international"),
 ) -> Any:
+    if refresh:
+        enforce_rate_limit(request, bucket="refresh", limit=REFRESH_RATE_LIMIT)
     normalized_mode = _validate_data_mode(data_mode)
     universe_key = universe.strip().lower()
     try:

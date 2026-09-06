@@ -88,8 +88,8 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
             <div>
               <div className="mono mb-2 text-[10px] uppercase tracking-[0.2em] text-[var(--dim)]">API Keys</div>
               <p className="mb-4 text-xs text-[var(--muted)]">
-                Keys are optional and stored locally in your home directory. Live news, macro, and filing
-                signals are enabled when their keys are present.
+                Keys are stored only in ~/.config/omnitrade/secrets.env (mode 600). The app never loads the
+                raw key into this window. Leave a field blank to keep the existing key.
               </p>
 
               <label className="mono mb-1 block text-[10px] uppercase tracking-[0.16em] text-[var(--muted)]">
@@ -97,9 +97,14 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
               </label>
               <input
                 type="password"
+                autoComplete="off"
                 value={settings.finnhub_api_key}
                 onChange={(event) => setSettings((prev) => ({ ...prev, finnhub_api_key: event.target.value }))}
-                placeholder="Finnhub news / quotes (optional)"
+                placeholder={
+                  settings.finnhub_configured
+                    ? `Saved ${settings.finnhub_hint ?? "••••"} — type a new key to replace`
+                    : "Finnhub news / quotes (optional)"
+                }
                 className="mb-3 w-full border border-[var(--line-strong)] bg-[var(--background)] px-3 py-2 font-mono text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
               />
 
@@ -108,9 +113,14 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
               </label>
               <input
                 type="password"
+                autoComplete="off"
                 value={settings.fred_api_key}
                 onChange={(event) => setSettings((prev) => ({ ...prev, fred_api_key: event.target.value }))}
-                placeholder="FRED macro data (optional)"
+                placeholder={
+                  settings.fred_configured
+                    ? `Saved ${settings.fred_hint ?? "••••"} — type a new key to replace`
+                    : "FRED macro data (optional)"
+                }
                 className="mb-3 w-full border border-[var(--line-strong)] bg-[var(--background)] px-3 py-2 font-mono text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
               />
 

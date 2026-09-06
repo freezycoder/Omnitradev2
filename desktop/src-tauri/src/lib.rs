@@ -32,9 +32,34 @@ struct BackendState {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 struct Settings {
+    #[serde(default)]
     finnhub_api_key: String,
+    #[serde(default)]
     fred_api_key: String,
+    #[serde(default)]
     sec_edgar_user_agent: String,
+    #[serde(default)]
+    finnhub_configured: bool,
+    #[serde(default)]
+    fred_configured: bool,
+    #[serde(default)]
+    finnhub_hint: String,
+    #[serde(default)]
+    fred_hint: String,
+}
+
+fn mask_secret(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let tail: String = trimmed.chars().rev().take(4).collect::<String>().chars().rev().collect();
+    format!("••••{tail}")
+}
+
+fn is_masked_or_blank(value: &str) -> bool {
+    let trimmed = value.trim();
+    trimmed.is_empty() || trimmed.starts_with('•') || trimmed.starts_with('*')
 }
 
 #[derive(Debug, Serialize)]
@@ -230,13 +255,41 @@ fn get_settings() -> Result<Settings, String> {
             .trim_matches('\'')
             .to_string();
         match key.trim() {
-            "FINNHUB_API_KEY" => settings.finnhub_api_key = value,
-            "FRED_API_KEY" => settings.fred_api_key = value,
+            "FINNHUB_API_KEY" => {
+                settings.finnhub_configured = !value.is_empty();
+                settings.finnhub_hint = mask_secret(&value);
+            }
+            "FRED_API_KEY" => {
+                settings.fred_configured = !value.is_empty();
+                settings.fred_hint = mask_secret(&value);
+            }
             "SEC_EDGAR_USER_AGENT" => settings.sec_edgar_user_agent = value,
             _ => {}
         }
     }
+    // Never send raw provider keys into the webview.
+    settings.finnhub_api_key.clear();
+    settings.fred_api_key.clear();
     Ok(settings)
+}
+
+fn read_raw_secret(path: &PathBuf, name: &str) -> String {
+    let Ok(content) = fs::read_to_string(path) else {
+        return String::new();
+    };
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') || !trimmed.contains('=') {
+            continue;
+        }
+        let Some((key, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        if key.trim() == name {
+            return value.trim().trim_matches('"').trim_matches('\'').to_string();
+        }
+    }
+    String::new()
 }
 
 #[tauri::command]
@@ -247,16 +300,33 @@ fn save_settings(app: tauri::AppHandle, settings: Settings) -> Result<(), String
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
+    let existing_finnhub = read_raw_secret(&path, "FINNHUB_API_KEY");
+    let existing_fred = read_raw_secret(&path, "FRED_API_KEY");
+    let finnhub = if is_masked_or_blank(&settings.finnhub_api_key) {
+        existing_finnhub
+    } else {
+        settings.finnhub_api_key.trim().to_string()
+    };
+    let fred = if is_masked_or_blank(&settings.fred_api_key) {
+        existing_fred
+    } else {
+        settings.fred_api_key.trim().to_string()
+    };
     let content = format!(
         "# Managed by OmniTrade desktop. Keys are stored locally only.\n\
          FINNHUB_API_KEY={}\n\
          FRED_API_KEY={}\n\
          SEC_EDGAR_USER_AGENT=\"{}\"\n",
-        settings.finnhub_api_key.trim(),
-        settings.fred_api_key.trim(),
+        finnhub,
+        fred,
         settings.sec_edgar_user_agent.trim(),
     );
     fs::write(&path, content).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+    }
     // Restart the backend so the newly saved keys are picked up.
     restart_backend(&app)?;
     Ok(())

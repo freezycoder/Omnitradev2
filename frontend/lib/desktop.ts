@@ -8,6 +8,10 @@ export type DesktopSettings = {
   finnhub_api_key: string;
   fred_api_key: string;
   sec_edgar_user_agent: string;
+  finnhub_configured?: boolean;
+  fred_configured?: boolean;
+  finnhub_hint?: string;
+  fred_hint?: string;
 };
 
 export type BackendStatus = {

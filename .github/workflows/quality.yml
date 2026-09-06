@@ -24,8 +24,9 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements.txt pytest
+      - run: pip install -r requirements.txt pytest pip-audit
       - run: pytest -q
+      - run: pip-audit -r requirements.txt
 
   frontend:
     runs-on: ubuntu-latest
@@ -40,5 +41,6 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      - run: npm audit --audit-level=high
       - run: npm run lint
       - run: npm run build
