@@ -4,7 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ChartLegend } from "@/components/ChartLegend";
-import { DataTable, DataTableColumn } from "@/components/DataTable";
+import { DataTable, DataTableColumn, etfHref } from "@/components/DataTable";
 import { ForecastPanel } from "@/components/ForecastPanel";
 import { LoadingState } from "@/components/LoadingState";
 import { MetricCard } from "@/components/MetricCard";
@@ -19,7 +19,7 @@ import {
   READ_ONLY_API_CAPABILITIES,
   TickerPayload
 } from "@/lib/api";
-import { asNumber, formatCurrency, formatLargeNumber, formatPct, formatSignedPct, pickArray, pickRecord, sentenceCase } from "@/lib/format";
+import { asNumber, formatAvailable, formatCurrency, formatLargeNumber, formatPct, formatSignedPct, pickArray, pickRecord, sentenceCase } from "@/lib/format";
 
 type Row = Record<string, unknown>;
 type DataMode = "auto" | "live" | "demo";
@@ -200,6 +200,8 @@ export function TickerAnalysisPage() {
   const earningsWarnings = Array.isArray(earningsIntelligence.warnings)
     ? earningsIntelligence.warnings.map((item) => String(item))
     : [];
+  const etfExposure = pickRecord(data?.etf_exposure);
+  const etfExposureRows = pickArray(etfExposure.etfs);
   const alternativeComponents = pickArray(alternativeSignal.components);
   const secEvents = pickArray(pickRecord(data?.sec_event_bundle).events);
   const alternativeEvidence = Array.isArray(alternativeSignal.evidence)
@@ -482,6 +484,41 @@ export function TickerAnalysisPage() {
                 </ul>
               ) : null}
             </div>
+          </TerminalPanel>
+
+          <TerminalPanel title="ETF exposure" eyebrow="Look-through from cached ETF holdings">
+            <DataTable
+              rows={etfExposureRows}
+              columns={[
+                {
+                  key: "etf_ticker",
+                  header: "ETF",
+                  render: (row) => (
+                    <a href={etfHref(String(row.etf_ticker ?? ""))} className="font-semibold text-white underline-offset-4 hover:underline">
+                      {String(row.etf_ticker ?? "Data unavailable")}
+                    </a>
+                  )
+                },
+                { key: "etf_name", header: "Name", render: (row) => String(row.etf_name ?? "Data unavailable") },
+                {
+                  key: "weight",
+                  header: "Weight",
+                  align: "right",
+                  render: (row) => {
+                    const value = asNumber(row.weight);
+                    return value === null ? "Data unavailable" : formatPct(value * 100, 2);
+                  }
+                },
+                { key: "aum", header: "AUM", align: "right", render: (row) => formatAvailable(row.aum, (value) => formatLargeNumber(value)) },
+                {
+                  key: "expense_ratio",
+                  header: "Expense ratio",
+                  align: "right",
+                  render: (row) => formatAvailable(row.expense_ratio, (value) => formatPct(value > 1 ? value : value * 100, 2))
+                }
+              ]}
+              emptyLabel={String(etfExposure.message ?? "No cached ETF holdings currently include this stock.")}
+            />
           </TerminalPanel>
 
           <TerminalPanel title="Alternative signals" eyebrow="Shadow research · zero live score impact">

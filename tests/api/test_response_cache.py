@@ -45,7 +45,7 @@ def test_performance_route_caches_expensive_payload(monkeypatch) -> None:
     monkeypatch.setattr(
         main,
         "_performance_payload",
-        lambda *, price_mode: calls.append(price_mode) or {"overall": {"resolved_signals": 1}},
+        lambda *, price_mode, **_kwargs: calls.append(price_mode) or {"overall": {"resolved_signals": 1}},
     )
 
     first = asyncio.run(main.performance_lab("cached"))

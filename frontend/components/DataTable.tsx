@@ -25,17 +25,30 @@ export function tickerHref(ticker: string) {
   return `/ticker?ticker=${encodeURIComponent(ticker)}`;
 }
 
+export function etfHref(ticker: string) {
+  return `/etf/${encodeURIComponent(ticker)}`;
+}
+
+function defaultRowHref(row: Record<string, unknown>): string | null {
+  const ticker = String(row.ticker ?? "").trim().toUpperCase();
+  if (!ticker) return null;
+  return String(row.asset_type ?? "").toUpperCase() === "ETF" ? etfHref(ticker) : tickerHref(ticker);
+}
+
 export function DataTable<T extends Record<string, unknown>>({
   rows,
   columns,
-  emptyLabel = "No rows available"
+  emptyLabel = "No rows available",
+  rowHref
 }: {
   rows: T[];
   columns: DataTableColumn<T>[];
   emptyLabel?: string;
+  rowHref?: (row: T) => string | null;
 }) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const router = useRouter();
+  const resolveHref = (row: T) => rowHref?.(row) ?? defaultRowHref(row);
   const tableColumns: ColumnDef<T>[] = columns.map((column) => ({
     id: String(column.key),
     header: column.header,
@@ -46,11 +59,12 @@ export function DataTable<T extends Record<string, unknown>>({
       const content = column.render
         ? column.render(original)
         : String(original[column.key as keyof T] ?? "N/A");
-      if (String(column.key) !== "ticker") return content;
+      if (column.render || String(column.key) !== "ticker") return content;
+      const href = resolveHref(original);
       const ticker = String(original[column.key as keyof T] ?? "").trim().toUpperCase();
-      return ticker ? (
+      return href && ticker ? (
         <Link
-          href={tickerHref(ticker)}
+          href={href}
           className="font-semibold text-[var(--text)] underline-offset-4 hover:text-[var(--accent-strong)] hover:underline"
           aria-label={`Analyze ${ticker}`}
         >
@@ -125,30 +139,31 @@ export function DataTable<T extends Record<string, unknown>>({
         </thead>
         <tbody>
           {table.getRowModel().rows.map((row) => {
+            const href = resolveHref(row.original);
             const rowTicker = String((row.original as Record<string, unknown>).ticker ?? "").trim().toUpperCase();
-            const openTicker = () => {
-              if (rowTicker) router.push(tickerHref(rowTicker));
+            const openRow = () => {
+              if (href) router.push(href);
             };
             return (
             <tr
               key={row.id}
-              onClick={rowTicker ? openTicker : undefined}
+              onClick={href ? openRow : undefined}
               onKeyDown={
-                rowTicker
+                href
                   ? (event) => {
                       if (event.target !== event.currentTarget) return;
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
-                        openTicker();
+                        openRow();
                       }
                     }
                   : undefined
               }
-              tabIndex={rowTicker ? 0 : undefined}
-              role={rowTicker ? "link" : undefined}
-              aria-label={rowTicker ? `Open ${rowTicker} ticker analysis` : undefined}
+              tabIndex={href ? 0 : undefined}
+              role={href ? "link" : undefined}
+              aria-label={href ? `Open ${rowTicker || "row"} analysis` : undefined}
               className={`data-row border-b border-[var(--line-soft)] transition-colors hover:bg-[var(--accent-soft)] ${
-                rowTicker ? "cursor-pointer focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--accent)]" : ""
+                href ? "cursor-pointer focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--accent)]" : ""
               }`}
             >
               {row.getVisibleCells().map((cell, index) => {

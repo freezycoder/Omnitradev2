@@ -16,6 +16,7 @@ type NavigationItem = {
 };
 
 const scannerRoutes = ["/overview", "/long-term", "/short-term", "/international"];
+const etfRoutes = ["/etf", "/etf/compare"];
 
 const navGroups: { label: string; index: string; items: NavigationItem[] }[] = [
   {
@@ -24,28 +25,33 @@ const navGroups: { label: string; index: string; items: NavigationItem[] }[] = [
     items: [
       { href: "/overview", label: "Scanner", code: "SCAN", index: "01", match: scannerRoutes },
       { href: "/ticker", label: "Ticker Analysis", code: "TICK", index: "02" },
-      { href: "/watchlist", label: "Watchlist", code: "LIST", index: "03" }
+      { href: "/etf", label: "ETFs", code: "ETF", index: "03", match: etfRoutes },
+      { href: "/watchlist", label: "Watchlist", code: "LIST", index: "04" }
     ]
   },
   {
     label: "Portfolio",
     index: "02",
-    items: [{ href: "/portfolio", label: "Portfolio", code: "BOOK", index: "04" }]
+    items: [{ href: "/portfolio", label: "Portfolio", code: "BOOK", index: "05" }]
   },
   {
     label: "Validation",
     index: "03",
     items: [
-      { href: "/performance", label: "Performance Lab", code: "LAB", index: "05" },
-      { href: "/long-term-performance", label: "Long-Term Performance", code: "LONG", index: "06" },
-      { href: "/calibration", label: "Calibration", code: "CAL", index: "07" }
+      { href: "/performance", label: "Performance Lab", code: "LAB", index: "06" },
+      { href: "/long-term-performance", label: "Long-Term Performance", code: "LONG", index: "07" },
+      { href: "/calibration", label: "Calibration", code: "CAL", index: "08" }
     ]
   }
 ];
 
 function isActive(pathname: string, item: NavigationItem) {
   const routes = item.match ?? [item.href];
-  return routes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
+  return routes.some((route) => {
+    if (pathname === route) return true;
+    if (route === "/etf") return pathname.startsWith("/etf/");
+    return pathname.startsWith(`${route}/`);
+  });
 }
 
 function NavigationGroups({

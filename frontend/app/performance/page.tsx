@@ -37,13 +37,21 @@ function usePerformanceLab() {
   const [loading, setLoading] = useState(true);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [capabilities, setCapabilities] = useState<ApiCapabilities>(READ_ONLY_API_CAPABILITIES);
+  const [assetType, setAssetType] = useState<"ALL" | "STOCK" | "ETF">("ALL");
+  const [tickerFilter, setTickerFilter] = useState("");
+  const [tickerInput, setTickerInput] = useState("");
+  const [strategyFamily, setStrategyFamily] = useState("");
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setError(null);
     Promise.all([
-      fetchPerformanceLab(),
+      fetchPerformanceLab({
+        assetType,
+        ticker: tickerFilter || undefined,
+        strategyFamily: strategyFamily || undefined
+      }),
       fetchApiCapabilities().catch(() => READ_ONLY_API_CAPABILITIES)
     ])
       .then(([payload, capabilityPayload]) => {
@@ -61,9 +69,23 @@ function usePerformanceLab() {
     return () => {
       active = false;
     };
-  }, [refreshNonce]);
+  }, [refreshNonce, assetType, tickerFilter, strategyFamily]);
 
-  return { data, error, loading, capabilities, refresh: () => setRefreshNonce((value) => value + 1) };
+  return {
+    data,
+    error,
+    loading,
+    capabilities,
+    assetType,
+    setAssetType,
+    tickerFilter,
+    setTickerFilter,
+    tickerInput,
+    setTickerInput,
+    strategyFamily,
+    setStrategyFamily,
+    refresh: () => setRefreshNonce((value) => value + 1)
+  };
 }
 
 const bucketColumns: DataTableColumn<Row>[] = [
@@ -78,11 +100,14 @@ const bucketColumns: DataTableColumn<Row>[] = [
 
 const outcomeColumns: DataTableColumn<Row>[] = [
   { key: "ticker", header: "Ticker", render: (row) => <span className="font-semibold text-white">{String(row.ticker ?? "N/A")}</span> },
+  { key: "asset_type", header: "Asset", render: (row) => sentenceCase(row.asset_type ?? "STOCK") },
   { key: "strategy", header: "Strategy", render: (row) => sentenceCase(row.strategy) },
   { key: "source", header: "Source", render: (row) => sentenceCase(row.source) },
   { key: "score", header: "Score", align: "right" },
   { key: "status", header: "Status", render: (row) => sentenceCase(row.status) },
   { key: "realized_return_pct", header: "Gross Return", align: "right", render: (row) => formatPct(row.realized_return_pct, 2) },
+  { key: "max_favorable_excursion_pct", header: "MFE", align: "right", render: (row) => formatPct(row.max_favorable_excursion_pct, 2) },
+  { key: "max_adverse_excursion_pct", header: "MAE", align: "right", render: (row) => formatPct(row.max_adverse_excursion_pct, 2) },
   { key: "evaluated_at", header: "Evaluated" }
 ];
 
@@ -136,7 +161,21 @@ function initialLogEntry(): PerformanceLogInput {
 }
 
 export default function PerformancePage() {
-  const { data, error, loading, capabilities, refresh } = usePerformanceLab();
+  const {
+    data,
+    error,
+    loading,
+    capabilities,
+    assetType,
+    setAssetType,
+    tickerFilter,
+    setTickerFilter,
+    tickerInput,
+    setTickerInput,
+    strategyFamily,
+    setStrategyFamily,
+    refresh
+  } = usePerformanceLab();
   const [logEntry, setLogEntry] = useState<PerformanceLogInput>(initialLogEntry);
   const [logStatus, setLogStatus] = useState<string | null>(null);
   const [logError, setLogError] = useState<string | null>(null);
@@ -225,6 +264,50 @@ export default function PerformancePage() {
   return (
     <div>
       <SectionHeader title="Performance" />
+      <div className="mb-5 flex flex-wrap items-end gap-3">
+        <label className="text-xs text-[var(--muted)]">
+          Asset type
+          <select
+            className="mt-1 block border border-[var(--line)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--text)]"
+            value={assetType}
+            onChange={(event) => setAssetType(event.target.value as "ALL" | "STOCK" | "ETF")}
+          >
+            <option value="ALL">All</option>
+            <option value="STOCK">Stocks</option>
+            <option value="ETF">ETFs</option>
+          </select>
+        </label>
+        <label className="text-xs text-[var(--muted)]">
+          Strategy family
+          <select
+            className="mt-1 block border border-[var(--line)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--text)]"
+            value={strategyFamily}
+            onChange={(event) => setStrategyFamily(event.target.value)}
+          >
+            <option value="">All short-term</option>
+            <option value="short_term_day">Day</option>
+            <option value="short_term_swing">Swing</option>
+          </select>
+        </label>
+        <form
+          className="flex flex-wrap items-end gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setTickerFilter(tickerInput.trim().toUpperCase());
+          }}
+        >
+          <label className="text-xs text-[var(--muted)]">
+            Ticker
+            <input
+              className="mt-1 block border border-[var(--line)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--text)]"
+              value={tickerInput}
+              onChange={(event) => setTickerInput(event.target.value)}
+              placeholder="AAPL or QQQ"
+            />
+          </label>
+          <button type="submit" className="button">Apply</button>
+        </form>
+      </div>
 
       {loading && !data ? <LoadingState title="Loading performance" message="Loading performance cohorts, risk context, and recent outcomes." /> : null}
       {error ? <TerminalPanel title="API error"><div role="alert" className="text-sm text-[var(--red)]">{error}</div></TerminalPanel> : null}
