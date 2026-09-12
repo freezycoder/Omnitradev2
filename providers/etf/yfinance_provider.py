@@ -7,7 +7,7 @@ import logging
 from threading import RLock
 from typing import Any
 
-from domain.etf.models import DATA_UNAVAILABLE, EtfFlowSnapshot, EtfHoldingsSnapshot, EtfProfile, optional_float, optional_int, optional_str
+from domain.etf.models import DATA_UNAVAILABLE, EtfFlowSnapshot, EtfHoldingsSnapshot, EtfProfile, as_fraction, optional_float, optional_int, optional_str
 from domain.etf.normalization import normalize_allocation, normalize_holdings, unix_to_date, with_unavailable_fields
 
 
@@ -53,14 +53,14 @@ class YFinanceEtfProvider:
         if not info:
             return None
         expense = (
-            optional_float(info.get("annualReportExpenseRatio"))
-            or optional_float(info.get("netExpenseRatio"))
-            or optional_float(info.get("expenseRatio"))
+            as_fraction(info.get("annualReportExpenseRatio"))
+            or as_fraction(info.get("netExpenseRatio"))
+            or as_fraction(info.get("expenseRatio"))
         )
         dividend = (
-            optional_float(info.get("yield"))
-            or optional_float(info.get("dividendYield"))
-            or optional_float(info.get("trailingAnnualDividendYield"))
+            as_fraction(info.get("yield"), percent_if_above=0.2)
+            or as_fraction(info.get("dividendYield"), percent_if_above=0.2)
+            or as_fraction(info.get("trailingAnnualDividendYield"), percent_if_above=0.2)
         )
         funds = _funds_data(ticker_obj)
         sector_exposure = ()

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from domain.etf.models import EtfFlowSnapshot, EtfHoldingsSnapshot, EtfProfile, optional_float, optional_int, optional_str
+from domain.etf.models import EtfFlowSnapshot, EtfHoldingsSnapshot, EtfProfile, as_fraction, optional_float, optional_int, optional_str
 from domain.etf.normalization import normalize_allocation, normalize_holdings, with_unavailable_fields
 from providers.news.finnhub_client import FinnhubClient, build_finnhub_client
 
@@ -37,10 +37,10 @@ class FinnhubEtfProvider:
             asset_class=optional_str(profile_payload.get("assetClass") or profile_payload.get("assetType")),
             category=optional_str(profile_payload.get("investmentSegment") or profile_payload.get("category")),
             description=optional_str(profile_payload.get("description")),
-            expense_ratio=optional_float(profile_payload.get("expenseRatio")),
+            expense_ratio=as_fraction(profile_payload.get("expenseRatio")),
             aum=optional_float(profile_payload.get("aum") or profile_payload.get("totalNav")),
             average_volume=optional_float(profile_payload.get("averageVolume") or profile_payload.get("avgVolume")),
-            dividend_yield=optional_float(profile_payload.get("yield") or profile_payload.get("dividendYield")),
+            dividend_yield=as_fraction(profile_payload.get("yield") or profile_payload.get("dividendYield"), percent_if_above=0.2),
             inception_date=optional_str(profile_payload.get("inceptionDate") or profile_payload.get("inception")),
             holdings_count=optional_int(profile_payload.get("holdingsCount") or profile_payload.get("numberOfHoldings")),
             geographic_exposure=normalize_allocation(_list_payload(country_response.payload, "countries", "country"), self.name),

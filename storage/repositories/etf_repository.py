@@ -7,7 +7,7 @@ from typing import Any
 from uuid import uuid4
 
 from config.etf import ETF_CACHE_TTL_HOURS, ETF_HOLDINGS_CACHE_TTL_HOURS, EtfUniverseFilters
-from domain.etf.models import AllocationSlice, EtfHolding, EtfHoldingsSnapshot, EtfProfile
+from domain.etf.models import AllocationSlice, EtfHolding, EtfHoldingsSnapshot, EtfProfile, as_fraction
 from domain.etf.overlap import holding_key
 from storage.sqlite import bootstrap_database, connection_scope
 
@@ -68,10 +68,10 @@ def _profile_from_row(row: Any) -> EtfProfile:
         asset_class=row["asset_class"],
         category=row["category"],
         description=row["description"],
-        expense_ratio=row["expense_ratio"],
+        expense_ratio=as_fraction(row["expense_ratio"]),
         aum=row["aum"],
         average_volume=row["average_volume"],
-        dividend_yield=row["dividend_yield"],
+        dividend_yield=as_fraction(row["dividend_yield"], percent_if_above=0.2),
         inception_date=row["inception_date"],
         holdings_count=row["holdings_count"],
         geographic_exposure=_allocations_from_json(row["geographic_exposure_json"]),

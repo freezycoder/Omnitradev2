@@ -38,6 +38,22 @@ def optional_str(value: Any) -> str | None:
     return text or None
 
 
+def as_fraction(value: Any, *, percent_if_above: float = 0.05) -> float | None:
+    """Normalize provider ratios to 0-1 fractions without inventing values.
+
+    Some providers send expense/yield as 0.002 (fraction) and others as 0.20 (percent).
+    Values above `percent_if_above` are treated as percent.
+    """
+    number = optional_float(value)
+    if number is None or number < 0:
+        return None
+    if number > 1:
+        number = number / 100.0
+    elif number > percent_if_above:
+        number = number / 100.0
+    return number
+
+
 @dataclass(frozen=True)
 class AllocationSlice:
     label: str
@@ -152,5 +168,6 @@ __all__ = [
     "optional_float",
     "optional_int",
     "optional_str",
+    "as_fraction",
     "utc_now_iso",
 ]
