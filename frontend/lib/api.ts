@@ -631,9 +631,20 @@ export type EtfScreenerPayload = {
   rows?: ApiRecord[];
   failures?: string[];
   note?: string;
+  api_note?: string;
+  refresh_status?: "idle" | "running" | "complete" | "failed";
+  partial?: boolean;
 };
 
 export type EtfAnalysisPayload = ApiRecord;
+
+export async function fetchEtfRefreshStatus(): Promise<RefreshStatusPayload> {
+  try {
+    return await request<RefreshStatusPayload>("/api/etf/refresh-status");
+  } catch {
+    return { refresh_status: "idle", status: "idle" };
+  }
+}
 
 export function fetchEtfScreener(filters: Record<string, string> = {}, refresh = false): Promise<EtfScreenerPayload> {
   const params = new URLSearchParams(filters);
