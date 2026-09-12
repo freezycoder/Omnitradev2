@@ -75,6 +75,13 @@ data_store/ticker_cache/*
 *.bak
 
 # Generated desktop bundles and local reports
+desktop/node_modules/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/src-tauri/icons/android/
+desktop/src-tauri/icons/ios/
+desktop/src-tauri/icons/Square*.png
+desktop/src-tauri/icons/StoreLogo.png
 *.app/
 *.docx
 PROJECT_AUDIT.md

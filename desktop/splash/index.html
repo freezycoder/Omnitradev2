@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OmniTrade</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: #0d0d0d;
+        color: #f5f2ea;
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+      }
+      main {
+        min-height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        padding: 32px;
+        text-align: center;
+      }
+      h1 {
+        margin: 0;
+        font-size: 28px;
+        letter-spacing: 0.28em;
+        font-weight: 500;
+        color: #f0d78c;
+      }
+      p,
+      pre {
+        max-width: 640px;
+        color: rgba(245, 242, 234, 0.62);
+        line-height: 1.5;
+      }
+      pre {
+        text-align: left;
+        white-space: pre-wrap;
+        background: #161616;
+        border: 1px solid rgba(201, 168, 76, 0.34);
+        padding: 16px;
+      }
+      .pulse {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #c9a84c;
+        box-shadow: 0 0 18px #c9a84c;
+        animation: pulse 1.4s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        50% {
+          opacity: 0.35;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="pulse" id="pulse"></div>
+      <h1>OMNITRADE</h1>
+      <p id="status">Starting the local API and research UI…</p>
+      <pre id="error" hidden></pre>
+    </main>
+    <script>
+      window.__omnitradeError = function (message) {
+        document.getElementById("pulse").style.background = "#ff5d52";
+        document.getElementById("status").textContent = "Could not start OmniTrade";
+        const error = document.getElementById("error");
+        error.hidden = false;
+        error.textContent = message;
+      };
+    </script>
+  </body>
+</html>

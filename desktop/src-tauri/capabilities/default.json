@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "Main OmniTrade window",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

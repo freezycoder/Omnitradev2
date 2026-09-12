@@ -9,6 +9,7 @@ OmniTrade is a local stock-screening dashboard with a Streamlit app, a FastAPI A
 - Next.js frontend: `frontend/`
 - Local demo data: `data_store/demo_data.json`
 - Clickable launchers for local desktop and same-Wi-Fi phone access
+- Mac app builder: `desktop/` (Tauri launcher around this git checkout)
 
 ## Setup
 
@@ -69,6 +70,20 @@ Then open `http://127.0.0.1:3000/overview`.
 The local API launcher explicitly enables watchlist and performance-log writes.
 API processes started without `OMNITRADE_WRITE_MODE=local` fail closed in
 read-only mode.
+
+## Rebuild the Mac app
+
+`OmniTrade.app` is a Tauri launcher around this git repo. `git pull` updates source only; it does not refresh a copy already in `/Applications`.
+
+From the repo root on a Mac with Xcode Command Line Tools, Node, Rust, and Python:
+
+```bash
+chmod +x desktop/build-mac.sh
+./desktop/build-mac.sh
+open desktop/src-tauri/target/release/bundle/macos/OmniTrade.app
+```
+
+Keep the clone at `~/Omnitradev2`, or set `OMNITRADE_ROOT` to the repo path. See `desktop/README.md` before replacing `/Applications/OmniTrade.app`.
 
 ## Run from your phone on the same Wi-Fi
 

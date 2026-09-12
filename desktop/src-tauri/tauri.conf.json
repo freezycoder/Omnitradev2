@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OmniTrade",
+  "version": "0.1.0",
+  "identifier": "com.omnitrade.app",
+  "build": {
+    "frontendDist": "../splash",
+    "devUrl": "http://127.0.0.1:3000",
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "bash -c 'if [ -f ./build-frontend.sh ]; then bash ./build-frontend.sh; else bash ../build-frontend.sh; fi'"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "OmniTrade",
+        "width": 1440,
+        "height": 900,
+        "resizable": true,
+        "fullscreen": false,
+        "create": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "12.0"
+    }
+  }
+}
