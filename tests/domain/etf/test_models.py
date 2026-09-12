@@ -24,9 +24,10 @@ def test_as_fraction_converts_percent_scale_without_zeroing_unknown():
     from domain.etf.models import as_fraction
 
     assert as_fraction(None) is None
-    assert as_fraction(0.002) == 0.002
-    assert as_fraction(0.18) == 0.0018
-    assert as_fraction(0.20) == 0.002
+    assert as_fraction(0.002, percent_if_above=0.02) == 0.002
+    assert as_fraction(0.03, percent_if_above=0.02) == 0.0003
+    assert as_fraction(0.18, percent_if_above=0.02) == 0.0018
+    assert as_fraction(0.20, percent_if_above=0.02) == 0.002
     assert as_fraction(18) == 0.18
     assert as_fraction(0, percent_if_above=0.05) == 0.0
 

@@ -37,7 +37,7 @@ class FinnhubEtfProvider:
             asset_class=optional_str(profile_payload.get("assetClass") or profile_payload.get("assetType")),
             category=optional_str(profile_payload.get("investmentSegment") or profile_payload.get("category")),
             description=optional_str(profile_payload.get("description")),
-            expense_ratio=as_fraction(profile_payload.get("expenseRatio")),
+            expense_ratio=as_fraction(profile_payload.get("expenseRatio"), percent_if_above=0.02),
             aum=optional_float(profile_payload.get("aum") or profile_payload.get("totalNav")),
             average_volume=optional_float(profile_payload.get("averageVolume") or profile_payload.get("avgVolume")),
             dividend_yield=as_fraction(profile_payload.get("yield") or profile_payload.get("dividendYield"), percent_if_above=0.2),

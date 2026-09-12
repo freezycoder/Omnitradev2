@@ -53,9 +53,9 @@ class YFinanceEtfProvider:
         if not info:
             return None
         expense = (
-            as_fraction(info.get("annualReportExpenseRatio"))
-            or as_fraction(info.get("netExpenseRatio"))
-            or as_fraction(info.get("expenseRatio"))
+            as_fraction(info.get("annualReportExpenseRatio"), percent_if_above=0.02)
+            or as_fraction(info.get("netExpenseRatio"), percent_if_above=0.02)
+            or as_fraction(info.get("expenseRatio"), percent_if_above=0.02)
         )
         dividend = (
             as_fraction(info.get("yield"), percent_if_above=0.2)

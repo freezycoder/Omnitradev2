@@ -68,7 +68,7 @@ def _profile_from_row(row: Any) -> EtfProfile:
         asset_class=row["asset_class"],
         category=row["category"],
         description=row["description"],
-        expense_ratio=as_fraction(row["expense_ratio"]),
+        expense_ratio=as_fraction(row["expense_ratio"], percent_if_above=0.02),
         aum=row["aum"],
         average_volume=row["average_volume"],
         dividend_yield=as_fraction(row["dividend_yield"], percent_if_above=0.2),
