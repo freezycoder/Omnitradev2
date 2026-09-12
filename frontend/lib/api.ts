@@ -518,8 +518,17 @@ export function fetchPortfolio(): Promise<PortfolioPayload> {
   return request<PortfolioPayload>("/api/portfolio");
 }
 
-export function fetchPerformanceLab(): Promise<PerformanceLabPayload> {
-  return request<PerformanceLabPayload>("/api/performance-lab");
+export function fetchPerformanceLab(filters?: {
+  assetType?: "ALL" | "STOCK" | "ETF";
+  ticker?: string;
+  strategyFamily?: string;
+}): Promise<PerformanceLabPayload> {
+  const params = new URLSearchParams();
+  if (filters?.assetType) params.set("asset_type", filters.assetType);
+  if (filters?.ticker) params.set("ticker", filters.ticker);
+  if (filters?.strategyFamily) params.set("strategy_family", filters.strategyFamily);
+  const suffix = params.toString();
+  return request<PerformanceLabPayload>(`/api/performance-lab${suffix ? `?${suffix}` : ""}`);
 }
 
 export function fetchApiCapabilities(): Promise<ApiCapabilities> {
@@ -602,4 +611,37 @@ export function fetchForecast(
     params.set("target_price", String(levels.targetPrice));
   }
   return request<ForecastPayload>(`/api/forecast/${encodeURIComponent(ticker)}?${params.toString()}`);
+}
+
+export type EtfScreenerPayload = {
+  updated_at?: string;
+  source?: string;
+  universe_name?: string;
+  rows?: ApiRecord[];
+  failures?: string[];
+  note?: string;
+};
+
+export type EtfAnalysisPayload = ApiRecord;
+
+export function fetchEtfScreener(filters: Record<string, string> = {}, refresh = false): Promise<EtfScreenerPayload> {
+  const params = new URLSearchParams(filters);
+  if (refresh) params.set("refresh", "true");
+  const suffix = params.toString();
+  return request<EtfScreenerPayload>(`/api/etf${suffix ? `?${suffix}` : ""}`);
+}
+
+export function fetchEtfAnalysis(ticker: string, refresh = false): Promise<EtfAnalysisPayload> {
+  const params = new URLSearchParams();
+  if (refresh) params.set("refresh", "true");
+  const suffix = params.toString();
+  return request<EtfAnalysisPayload>(`/api/etf/${encodeURIComponent(ticker)}${suffix ? `?${suffix}` : ""}`);
+}
+
+export function fetchEtfCompare(symbols: string[]): Promise<ApiRecord> {
+  return request<ApiRecord>(`/api/etf/compare?symbols=${encodeURIComponent(symbols.join(","))}`);
+}
+
+export function fetchEtfUnderlyingSignals(): Promise<{ etfs?: ApiRecord[] }> {
+  return request<{ etfs?: ApiRecord[] }>("/api/etf/underlying-signals");
 }

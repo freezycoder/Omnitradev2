@@ -95,8 +95,15 @@ class OutcomeRepository:
         self,
         strategy_family: str | None = None,
         min_score: int | None = None,
+        asset_type: str | None = None,
+        ticker: str | None = None,
     ) -> dict[str, float | int | None]:
-        rows = self._load_resolved_rows(strategy_family=strategy_family, min_score=min_score)
+        rows = self._load_resolved_rows(
+            strategy_family=strategy_family,
+            min_score=min_score,
+            asset_type=asset_type,
+            ticker=ticker,
+        )
         return self._rows_to_expectancy_stats(rows)
 
     def get_resolved_stats_by_strategy(
@@ -116,8 +123,15 @@ class OutcomeRepository:
         self,
         strategy_family: str | None = None,
         min_score: int | None = None,
+        asset_type: str | None = None,
+        ticker: str | None = None,
     ) -> list[dict[str, float | int | str | None]]:
-        rows = self._load_resolved_rows(strategy_family=strategy_family, min_score=min_score)
+        rows = self._load_resolved_rows(
+            strategy_family=strategy_family,
+            min_score=min_score,
+            asset_type=asset_type,
+            ticker=ticker,
+        )
         ordered_buckets = ("80+", "70-79", "60-69", "50-59", "<50")
         bucket_rows: list[dict[str, float | int | str | None]] = []
         for bucket in ordered_buckets:
@@ -274,6 +288,8 @@ class OutcomeRepository:
         *,
         strategy_family: str | None = None,
         min_score: int | None = None,
+        asset_type: str | None = None,
+        ticker: str | None = None,
     ) -> list[sqlite3.Row]:
         query = """
             SELECT
@@ -299,6 +315,12 @@ class OutcomeRepository:
         if min_score is not None:
             query += " AND s.score >= ?"
             params.append(min_score)
+        if asset_type and asset_type.upper() not in {"ALL", "*"}:
+            query += " AND UPPER(COALESCE(s.asset_type, 'STOCK')) = ?"
+            params.append(asset_type.upper().strip())
+        if ticker:
+            query += " AND s.ticker = ?"
+            params.append(ticker.upper().strip())
         query += " ORDER BY o.evaluated_at ASC, s.created_at ASC"
         with connection_scope(self._db_path) as connection:
             return connection.execute(query, params).fetchall()

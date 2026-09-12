@@ -108,6 +108,7 @@ class SignalLogService:
             stop_loss_price=view.stop_loss_price,
             setup_type=view.setup_type,
             feature_snapshot=feature_snapshot,
+            asset_type="STOCK",
         )
 
     def build_swing_trade_signal(self, analysis: TickerAnalysis, origin: str = "scanner") -> SignalRecord | None:
@@ -171,6 +172,7 @@ class SignalLogService:
             stop_loss_price=view.stop_loss_price,
             setup_type=view.setup_type,
             feature_snapshot=feature_snapshot,
+            asset_type="STOCK",
         )
 
     def _should_log_analysis(self, analysis: TickerAnalysis) -> bool:
@@ -197,6 +199,7 @@ class SignalLogService:
         stop_loss_price: float | None,
         setup_type: str | None,
         feature_snapshot: dict,
+        asset_type: str = "STOCK",
     ) -> SignalRecord:
         created_at = normalize_timestamp(analysis.updated_at or datetime.now(UTC))
         dedupe_key = build_dedupe_key(
@@ -209,6 +212,7 @@ class SignalLogService:
             recommendation_label=analysis.short_term_recommendation.label,
             entry_price=entry_price,
             model_version=self._model_version,
+            asset_type=asset_type,
         )
         return SignalRecord(
             signal_id=uuid4().hex,
@@ -239,6 +243,7 @@ class SignalLogService:
             news_impact=float(analysis.short_term_view.news_impact),
             feature_snapshot_json=json.dumps(feature_snapshot, sort_keys=True),
             evaluated=0,
+            asset_type=asset_type,
         )
 
 

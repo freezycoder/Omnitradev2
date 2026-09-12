@@ -100,6 +100,7 @@ class SignalRepository:
         strategy_family: str | None = None,
         source_quality: str | None = None,
         ticker: str | None = None,
+        asset_type: str | None = None,
     ) -> list[SignalRecord]:
         query = "SELECT * FROM signals WHERE 1 = 1"
         params: list[object] = []
@@ -112,6 +113,9 @@ class SignalRepository:
         if ticker:
             query += " AND ticker = ?"
             params.append(ticker.upper().strip())
+        if asset_type and asset_type.upper() not in {"ALL", "*"}:
+            query += " AND UPPER(COALESCE(asset_type, 'STOCK')) = ?"
+            params.append(asset_type.upper().strip())
         query += " ORDER BY created_at DESC LIMIT ?"
         params.append(limit)
         with connection_scope(self._db_path) as connection:
@@ -122,6 +126,8 @@ class SignalRepository:
         self,
         strategy_family: str | None = None,
         min_score: int | None = None,
+        asset_type: str | None = None,
+        ticker: str | None = None,
     ) -> dict[str, int]:
         query = """
             SELECT
@@ -139,6 +145,12 @@ class SignalRepository:
         if min_score is not None:
             query += " AND s.score >= ?"
             params.append(min_score)
+        if asset_type and asset_type.upper() not in {"ALL", "*"}:
+            query += " AND UPPER(COALESCE(s.asset_type, 'STOCK')) = ?"
+            params.append(asset_type.upper().strip())
+        if ticker:
+            query += " AND s.ticker = ?"
+            params.append(ticker.upper().strip())
         with connection_scope(self._db_path) as connection:
             row = connection.execute(query, params).fetchone()
         return {
@@ -164,6 +176,7 @@ class SignalRepository:
               AND signal_origin = ?
               AND source_quality = ?
               AND model_version = ?
+              AND UPPER(COALESCE(asset_type, 'STOCK')) = ?
               AND created_at BETWEEN ? AND ?
             ORDER BY created_at DESC
         """
@@ -173,6 +186,7 @@ class SignalRepository:
             candidate.signal_origin,
             candidate.source_quality,
             candidate.model_version,
+            (candidate.asset_type or "STOCK").upper(),
             window_start,
             window_end,
         )

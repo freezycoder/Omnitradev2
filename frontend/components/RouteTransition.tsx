@@ -15,6 +15,7 @@ const ROUTE_ORDER = [
   "/short-term",
   "/international",
   "/ticker",
+  "/etf",
   "/watchlist",
   "/portfolio",
   "/performance",
@@ -87,7 +88,7 @@ export function RouteTransition({ children }: { children: React.ReactNode }) {
   return (
     <div className="route-host min-w-0">
       {transitioning ? (
-        <span aria-hidden="true" className="route-rail" data-dir={direction} key={pathname} />
+        <span aria-hidden="true" className="route-rail" data-dir={direction} key={`rail-${pathname}`} />
       ) : null}
       {skeleton ? <RouteSkeleton phase={skeleton} /> : null}
       <div
