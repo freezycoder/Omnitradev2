@@ -58,7 +58,10 @@ export function EtfComparePage() {
               const profile = pickRecord(row.profile);
               const metrics = pickRecord(row.metrics);
               return {
-                ...profile,
+                ticker: profile.ticker,
+                name: profile.name,
+                expense_ratio: profile.expense_ratio,
+                aum: profile.aum,
                 asset_type: "ETF",
                 omni: pickRecord(row.omni_score).score,
                 return_1y: metrics.return_1y,

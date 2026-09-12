@@ -34,6 +34,9 @@ ANALYTICS_CACHE_TTL_SECONDS = 120.0
 _OVERVIEW_REFRESH_LOCK = Lock()
 _OVERVIEW_REFRESH_STATE_LOCK = Lock()
 _OVERVIEW_REFRESH_JOB: dict[str, Any] | None = None
+_ETF_REFRESH_LOCK = Lock()
+_ETF_REFRESH_STATE_LOCK = Lock()
+_ETF_REFRESH_JOB: dict[str, Any] | None = None
 _ANALYTICS_RESPONSE_CACHE = TtlResponseCache()
 
 
@@ -987,6 +990,137 @@ def kronos_forecast_health() -> Any:
         return {"enabled": True, "status": "unavailable", "message": str(exc)}
 
 
+def _etf_refresh_job_public_snapshot(job: dict[str, Any] | None = None) -> dict[str, Any]:
+    with _ETF_REFRESH_STATE_LOCK:
+        current = dict(job if job is not None else (_ETF_REFRESH_JOB or {}))
+    if not current:
+        return {
+            "refresh_status": "idle",
+            "status": "idle",
+            "message": "No ETF universe refresh has been requested in this API process.",
+        }
+    return {
+        "refresh_status": current.get("status", "idle"),
+        "status": current.get("status", "idle"),
+        "job_id": current.get("job_id"),
+        "started_at": current.get("started_at"),
+        "finished_at": current.get("finished_at"),
+        "updated_at": current.get("updated_at"),
+        "source": current.get("source"),
+        "message": current.get("message"),
+        "error": current.get("error"),
+        "row_count": current.get("row_count"),
+    }
+
+
+def _store_etf_refresh_job_update(job_id: str, **updates: Any) -> None:
+    with _ETF_REFRESH_STATE_LOCK:
+        if not _ETF_REFRESH_JOB or _ETF_REFRESH_JOB.get("job_id") != job_id:
+            return
+        _ETF_REFRESH_JOB.update(updates)
+
+
+def _run_etf_refresh_job(job_id: str) -> None:
+    from application.etf_service import EtfService
+
+    try:
+        payload = EtfService().build_screener(refresh=True, log_signals=True)
+        _store_etf_refresh_job_update(
+            job_id,
+            status="complete",
+            finished_at=_now_iso(),
+            updated_at=payload.get("updated_at"),
+            source=payload.get("source"),
+            row_count=len(payload.get("rows") or []),
+            message="ETF universe refresh complete.",
+            error=None,
+        )
+    except Exception as exc:
+        log.exception("ETF screener refresh job failed")
+        _store_etf_refresh_job_update(
+            job_id,
+            status="failed",
+            finished_at=_now_iso(),
+            message="ETF universe refresh failed before a newer snapshot could be published.",
+            error=str(exc),
+        )
+    finally:
+        _ETF_REFRESH_LOCK.release()
+
+
+def _start_etf_refresh_job() -> dict[str, Any]:
+    if not _ETF_REFRESH_LOCK.acquire(blocking=False):
+        return {**_etf_refresh_job_public_snapshot(), "already_running": True}
+
+    job_id = uuid.uuid4().hex
+    job = {
+        "job_id": job_id,
+        "status": "running",
+        "started_at": _now_iso(),
+        "finished_at": None,
+        "updated_at": None,
+        "source": None,
+        "row_count": 0,
+        "message": "An ETF universe refresh is running in the background.",
+        "error": None,
+    }
+    with _ETF_REFRESH_STATE_LOCK:
+        global _ETF_REFRESH_JOB
+        _ETF_REFRESH_JOB = job
+    initial_snapshot = _etf_refresh_job_public_snapshot(job)
+
+    try:
+        Thread(target=_run_etf_refresh_job, kwargs={"job_id": job_id}, daemon=True).start()
+    except Exception:
+        _store_etf_refresh_job_update(
+            job_id,
+            status="failed",
+            finished_at=_now_iso(),
+            message="ETF universe refresh could not be started.",
+        )
+        _ETF_REFRESH_LOCK.release()
+        raise
+
+    return {**initial_snapshot, "already_running": False}
+
+
+def _load_etf_screener_payload(*, refresh: bool, filters: Any) -> dict[str, Any]:
+    from application.etf_service import EtfService
+
+    service = EtfService()
+    if refresh:
+        job = _start_etf_refresh_job()
+        cached = service.cached_screener(filters) or service.empty_screener(
+            message="An ETF universe refresh is running in the background.",
+            refresh_status=job["refresh_status"],
+        )
+        already = job.get("already_running")
+        return {
+            **cached,
+            "refresh_status": job["refresh_status"],
+            "refresh_job": job,
+            "api_note": (
+                "An ETF universe refresh is already running. "
+                if already
+                else "An ETF universe refresh is running in the background. "
+            )
+            + "Rows appear as the cache is published; this request does not wait for yfinance.",
+        }
+
+    cached = service.cached_screener(filters)
+    if cached:
+        return {**cached, "refresh_status": _etf_refresh_job_public_snapshot().get("refresh_status", "idle")}
+    status = _etf_refresh_job_public_snapshot()
+    if status.get("refresh_status") == "running":
+        return service.empty_screener(
+            message="An ETF universe refresh is running in the background.",
+            refresh_status="running",
+        )
+    return service.empty_screener(
+        message="No ETF rows are cached yet. Use Refresh cache to pull provider data in the background."
+    )
+
+
 @app.get("/api/etf")
 async def etf_screener(
     refresh: bool = Query(default=False),
@@ -1002,7 +1136,6 @@ async def etf_screener(
     min_average_volume: float | None = Query(default=None),
     min_dividend_yield: float | None = Query(default=None),
 ) -> Any:
-    from application.etf_service import EtfService
     from config.etf import EtfUniverseFilters
 
     filters = EtfUniverseFilters(
@@ -1020,8 +1153,17 @@ async def etf_screener(
     )
     return await _run_service(
         "etf_screener",
-        lambda: EtfService().build_screener(filters, refresh=refresh, log_signals=refresh),
-        timeout_seconds=120.0,
+        lambda: _load_etf_screener_payload(refresh=refresh, filters=filters),
+        timeout_seconds=30.0,
+    )
+
+
+@app.get("/api/etf/refresh-status")
+async def etf_refresh_status() -> Any:
+    return await _run_service(
+        "etf_refresh_status",
+        _etf_refresh_job_public_snapshot,
+        timeout_seconds=10.0,
     )
 
 

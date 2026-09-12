@@ -7,7 +7,7 @@ import { LoadingState } from "@/components/LoadingState";
 import { SectionHeader } from "@/components/SectionHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { TerminalPanel } from "@/components/TerminalPanel";
-import { EtfScreenerPayload, fetchEtfScreener, fetchEtfUnderlyingSignals } from "@/lib/api";
+import { EtfScreenerPayload, fetchEtfRefreshStatus, fetchEtfScreener, fetchEtfUnderlyingSignals } from "@/lib/api";
 import { asNumber, formatAvailable, formatLargeNumber, formatPct, formatSignedPct, pickArray } from "@/lib/format";
 
 type Row = Record<string, unknown>;
@@ -61,12 +61,46 @@ export function EtfScreenerPage() {
     const request = refresh ? setRefreshing : setLoading;
     request(true);
     fetchEtfScreener({}, refresh)
-      .then((payload) => setData(payload))
+      .then((payload) => {
+        setData(payload);
+        if (refresh || payload.refresh_status === "running") {
+          void pollRefresh();
+        } else if (!payload.rows?.length) {
+          load(true);
+        }
+      })
       .catch((err: Error) => setError(err.message))
       .finally(() => {
         setLoading(false);
-        setRefreshing(false);
       });
+  }
+
+  async function pollRefresh() {
+    setRefreshing(true);
+    const deadline = Date.now() + 10 * 60_000;
+    try {
+      while (Date.now() < deadline) {
+        const status = await fetchEtfRefreshStatus();
+        if (status.refresh_status === "failed" || status.status === "failed") {
+          setError(status.error || status.message || "The ETF universe refresh failed.");
+          return;
+        }
+        const snapshot = await fetchEtfScreener({}, false);
+        setData(snapshot);
+        if (status.refresh_status === "complete" || status.status === "complete") {
+          setError(null);
+          return;
+        }
+        if (status.refresh_status !== "running" && status.status !== "running" && (snapshot.rows?.length ?? 0) > 0) {
+          return;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 5000));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The ETF universe refresh failed.");
+    } finally {
+      setRefreshing(false);
+    }
   }
 
   useEffect(() => {
@@ -165,7 +199,9 @@ export function EtfScreenerPage() {
           </label>
         </form>
         {error ? <p className="mb-3 text-sm text-[var(--red)]">{error}</p> : null}
-        <DataTable rows={rows} columns={columns} emptyLabel="No ETF rows are cached yet. Refresh the universe to pull provider data." />
+        {data?.api_note ? <p className="mb-3 text-sm text-[var(--muted)]">{data.api_note}</p> : null}
+        {refreshing ? <p className="mb-3 text-sm text-[var(--accent-strong)]">Refreshing the ETF universe in the background. Rows appear as they are cached.</p> : null}
+        <DataTable rows={rows} columns={columns} emptyLabel="No ETF rows are cached yet. Refresh starts a background scan; this page will not wait 120 seconds." />
       </TerminalPanel>
       <TerminalPanel title="Underlying signal exposure" eyebrow="Stock thesis expressed through ETF holdings">
         <DataTable

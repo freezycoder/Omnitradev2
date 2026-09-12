@@ -1,0 +1,2 @@
+# Placeholder so `cargo test` / `tauri-build` can resolve bundle.resources.
+# The real PyInstaller tree is written to omnitrade-backend/ by desktop/backend/build_backend.sh.
