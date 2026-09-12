@@ -7,6 +7,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from config.performance import ALL_SIGNAL_STRATEGIES, PERFORMANCE_MODEL_VERSION, SIGNAL_DEDUPE_ENTRY_MOVE_THRESHOLD_PCT
+from domain.assets import AssetType, normalize_asset_type
 
 
 def parse_timestamp(value: str | datetime) -> datetime:
@@ -49,10 +50,12 @@ def build_dedupe_key(
     recommendation_label: str,
     entry_price: float | None,
     model_version: str = PERFORMANCE_MODEL_VERSION,
+    asset_type: str = "STOCK",
 ) -> str:
     base = "|".join(
         [
             ticker.upper().strip(),
+            (asset_type or "STOCK").upper().strip(),
             strategy_family,
             source_quality,
             signal_origin,
@@ -96,10 +99,12 @@ class SignalRecord:
     news_impact: float | None
     feature_snapshot_json: str
     evaluated: int = 0
+    asset_type: str = AssetType.STOCK
 
     def __post_init__(self) -> None:
         if self.strategy_family not in ALL_SIGNAL_STRATEGIES:
             raise ValueError(f"Unsupported strategy_family: {self.strategy_family}")
+        normalize_asset_type(self.asset_type)
 
     @classmethod
     def from_row(cls, row: Any) -> "SignalRecord":
@@ -132,6 +137,7 @@ class SignalRecord:
             news_impact=float(row["news_impact"]) if row["news_impact"] is not None else None,
             feature_snapshot_json=row["feature_snapshot_json"],
             evaluated=int(row["evaluated"]),
+            asset_type=str(row["asset_type"] if "asset_type" in row.keys() and row["asset_type"] else AssetType.STOCK),
         )
 
     def to_db_dict(self) -> dict[str, Any]:

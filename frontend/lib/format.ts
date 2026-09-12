@@ -12,6 +12,11 @@ export function formatPct(value: unknown, digits = 1): string {
   return number === null ? "N/A" : `${number.toFixed(digits)}%`;
 }
 
+export function formatAvailable(value: unknown, formatter: (input: number) => string, empty = "Data unavailable"): string {
+  const number = asNumber(value);
+  return number === null ? empty : formatter(number);
+}
+
 export function formatSignedPct(value: unknown, digits = 1): string {
   const number = asNumber(value);
   if (number === null) return "N/A";

@@ -623,24 +623,41 @@ def _dashboard_payload(*, price_mode: str) -> dict[str, Any]:
     return _performance_lab_service(price_mode).build_dashboard_payload()
 
 
-def _performance_payload(*, price_mode: str) -> dict[str, Any]:
+def _performance_payload(
+    *,
+    price_mode: str,
+    asset_type: str | None = None,
+    ticker: str | None = None,
+    strategy_family: str | None = None,
+) -> dict[str, Any]:
     from config.performance import SUPPORTED_SIGNAL_STRATEGIES
 
     service = _performance_lab_service(price_mode)
-    overall = service.get_dashboard_summary()
+    overall = service.get_dashboard_summary(asset_type=asset_type, ticker=ticker)
+    strategies = (strategy_family,) if strategy_family else SUPPORTED_SIGNAL_STRATEGIES
 
     return {
         "overall": overall,
+        "filters": {
+            "asset_type": (asset_type or "ALL").upper(),
+            "ticker": ticker,
+            "strategy_family": strategy_family,
+        },
         "performance_assumptions": service.get_performance_assumptions(),
         "risk_context": service.get_performance_risk_context(overall),
         "by_strategy": {
-            strategy: service.get_strategy_summary(strategy)
-            for strategy in SUPPORTED_SIGNAL_STRATEGIES
+            strategy: service.get_strategy_summary(strategy, asset_type=asset_type, ticker=ticker)
+            for strategy in strategies
         },
-        "score_buckets": service.get_score_buckets(),
+        "score_buckets": service.get_score_buckets(asset_type=asset_type, ticker=ticker),
         "entry_trigger_lab": service.get_entry_trigger_lab_payload(),
         "trigger_sensitivity": service.get_trigger_sensitivity_payload(),
-        "recent_outcomes": service.get_recent_outcomes(limit=25),
+        "recent_outcomes": service.get_recent_outcomes(
+            limit=25,
+            asset_type=asset_type,
+            ticker=ticker,
+            strategy_family=strategy_family,
+        ),
     }
 
 
@@ -649,9 +666,10 @@ def _cached_analytics_payload(
     *,
     price_mode: str,
     factory: Callable[[], dict[str, Any]],
+    cache_suffix: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     return _ANALYTICS_RESPONSE_CACHE.get_or_create(
-        (service, price_mode),
+        (service, price_mode, *cache_suffix),
         ttl_seconds=ANALYTICS_CACHE_TTL_SECONDS,
         factory=factory,
     )
@@ -799,14 +817,30 @@ async def performance_lab(
         default="cached",
         description="cached avoids live price refresh for frontend responsiveness; live matches Streamlit refresh behavior.",
     ),
+    asset_type: str = "ALL",
+    ticker: str | None = None,
+    strategy_family: str | None = None,
 ) -> Any:
     normalized_price_mode = _validate_price_mode(price_mode)
+    normalized_asset_type = asset_type.strip().upper() or "ALL"
+    if normalized_asset_type not in {"ALL", "STOCK", "ETF"}:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_asset_type", "message": "asset_type must be ALL, STOCK, or ETF."},
+        )
+    normalized_ticker = ticker.upper().strip() if ticker else None
     return await _run_service(
         "performance_lab",
         lambda: _cached_analytics_payload(
             "performance_lab",
             price_mode=normalized_price_mode,
-            factory=lambda: _performance_payload(price_mode=normalized_price_mode),
+            cache_suffix=(normalized_asset_type, normalized_ticker or "", strategy_family or ""),
+            factory=lambda: _performance_payload(
+                price_mode=normalized_price_mode,
+                asset_type=None if normalized_asset_type == "ALL" else normalized_asset_type,
+                ticker=normalized_ticker,
+                strategy_family=strategy_family,
+            ),
         ),
     )
 
@@ -888,6 +922,11 @@ async def ticker_analysis(
                 "message": "No ticker analysis is available for this symbol and data mode.",
             },
         )
+    if isinstance(payload, dict):
+        from application.etf_service import EtfService
+
+        payload["asset_type"] = "STOCK"
+        payload["etf_exposure"] = EtfService().stock_exposure(normalized_ticker)
     return payload
 
 
@@ -946,6 +985,96 @@ def kronos_forecast_health() -> Any:
         return {"enabled": True, "status": "ok", "service_url": kronos_service_url(), **health()}
     except KronosUnavailable as exc:
         return {"enabled": True, "status": "unavailable", "message": str(exc)}
+
+
+@app.get("/api/etf")
+async def etf_screener(
+    refresh: bool = Query(default=False),
+    ticker: str | None = Query(default=None),
+    name: str | None = Query(default=None),
+    issuer: str | None = Query(default=None),
+    asset_class: str | None = Query(default=None),
+    category: str | None = Query(default=None),
+    sector: str | None = Query(default=None),
+    geography: str | None = Query(default=None),
+    max_expense_ratio: float | None = Query(default=None),
+    min_aum: float | None = Query(default=None),
+    min_average_volume: float | None = Query(default=None),
+    min_dividend_yield: float | None = Query(default=None),
+) -> Any:
+    from application.etf_service import EtfService
+    from config.etf import EtfUniverseFilters
+
+    filters = EtfUniverseFilters(
+        ticker=ticker,
+        name=name,
+        issuer=issuer,
+        asset_class=asset_class,
+        category=category,
+        sector=sector,
+        geography=geography,
+        max_expense_ratio=max_expense_ratio,
+        min_aum=min_aum,
+        min_average_volume=min_average_volume,
+        min_dividend_yield=min_dividend_yield,
+    )
+    return await _run_service(
+        "etf_screener",
+        lambda: EtfService().build_screener(filters, refresh=refresh, log_signals=refresh),
+        timeout_seconds=120.0,
+    )
+
+
+@app.get("/api/etf/compare")
+async def etf_compare(symbols: str = Query(..., description="Comma-separated ETF tickers")) -> Any:
+    from application.etf_service import EtfService
+
+    tickers = [item.strip() for item in symbols.split(",") if item.strip()]
+    try:
+        return await _run_service("etf_compare", lambda: EtfService().compare(tickers), timeout_seconds=120.0)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"error": "invalid_compare", "message": str(exc)}) from exc
+
+
+@app.get("/api/etf/exposure/{ticker}")
+async def etf_stock_exposure(ticker: str) -> Any:
+    from application.etf_service import EtfService
+
+    normalized_ticker = ticker.upper().strip()
+    if not normalized_ticker:
+        raise HTTPException(status_code=400, detail={"error": "invalid_ticker", "message": "Ticker is required."})
+    return await _run_service("etf_stock_exposure", lambda: EtfService().stock_exposure(normalized_ticker))
+
+
+@app.get("/api/etf/underlying-signals")
+async def etf_underlying_signals() -> Any:
+    from application.etf_service import EtfService
+
+    return await _run_service("etf_underlying_signals", lambda: {"etfs": EtfService().underlying_exposures()})
+
+
+@app.get("/api/etf/{ticker}")
+async def etf_analysis(ticker: str, refresh: bool = False) -> Any:
+    from application.etf_service import EtfService
+
+    normalized_ticker = ticker.upper().strip()
+    if not normalized_ticker:
+        raise HTTPException(status_code=400, detail={"error": "invalid_ticker", "message": "Ticker is required."})
+    payload = await _run_service(
+        "etf_analysis",
+        lambda: EtfService().build_analysis(normalized_ticker, refresh=refresh),
+        timeout_seconds=90.0,
+    )
+    if payload is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "etf_not_found",
+                "ticker": normalized_ticker,
+                "message": "No ETF profile is available for this symbol.",
+            },
+        )
+    return payload
 
 
 @app.get("/api/watchlist")

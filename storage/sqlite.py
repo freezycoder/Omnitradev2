@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS signals (
     news_impact REAL,
 
     feature_snapshot_json TEXT NOT NULL,
-    evaluated INTEGER NOT NULL DEFAULT 0
+    evaluated INTEGER NOT NULL DEFAULT 0,
+    asset_type TEXT NOT NULL DEFAULT 'STOCK'
 );
 """
 
@@ -114,6 +115,59 @@ CREATE TABLE IF NOT EXISTS strategy_history_snapshots (
 """
 
 
+ETFS_TABLE_DDL = """
+CREATE TABLE IF NOT EXISTS etfs (
+    ticker TEXT PRIMARY KEY,
+    name TEXT,
+    issuer TEXT,
+    asset_class TEXT,
+    category TEXT,
+    description TEXT,
+    expense_ratio REAL,
+    aum REAL,
+    average_volume REAL,
+    dividend_yield REAL,
+    inception_date TEXT,
+    holdings_count INTEGER,
+    geographic_exposure_json TEXT,
+    sector_exposure_json TEXT,
+    quote_type TEXT,
+    source TEXT,
+    unavailable_fields_json TEXT,
+    updated_at TEXT NOT NULL
+);
+"""
+
+
+ETF_HOLDINGS_TABLE_DDL = """
+CREATE TABLE IF NOT EXISTS etf_holdings (
+    etf_ticker TEXT NOT NULL,
+    holding_key TEXT NOT NULL,
+    holding_ticker TEXT,
+    holding_name TEXT,
+    weight REAL,
+    shares REAL,
+    as_of TEXT,
+    source TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (etf_ticker, holding_key)
+);
+"""
+
+
+ETF_HOLDINGS_SNAPSHOTS_TABLE_DDL = """
+CREATE TABLE IF NOT EXISTS etf_holdings_snapshots (
+    snapshot_id TEXT PRIMARY KEY,
+    etf_ticker TEXT NOT NULL,
+    captured_at TEXT NOT NULL,
+    source TEXT,
+    holdings_json TEXT NOT NULL,
+    sector_allocation_json TEXT,
+    geographic_allocation_json TEXT
+);
+"""
+
+
 INDEX_DDL = """
 CREATE INDEX IF NOT EXISTS idx_signals_ticker_created_at
 ON signals (ticker, created_at);
@@ -138,6 +192,24 @@ ON portfolio_history_snapshots (portfolio_name, snapshot_at);
 
 CREATE INDEX IF NOT EXISTS idx_strategy_history_name_time
 ON strategy_history_snapshots (strategy_name, snapshot_at);
+
+CREATE INDEX IF NOT EXISTS idx_etfs_updated_at
+ON etfs (updated_at);
+
+CREATE INDEX IF NOT EXISTS idx_etfs_issuer
+ON etfs (issuer);
+
+CREATE INDEX IF NOT EXISTS idx_etf_holdings_etf_ticker
+ON etf_holdings (etf_ticker);
+
+CREATE INDEX IF NOT EXISTS idx_etf_holdings_holding_ticker
+ON etf_holdings (holding_ticker);
+
+CREATE INDEX IF NOT EXISTS idx_etf_holdings_updated_at
+ON etf_holdings (updated_at);
+
+CREATE INDEX IF NOT EXISTS idx_etf_holdings_snapshots_etf
+ON etf_holdings_snapshots (etf_ticker, captured_at);
 """
 
 
@@ -147,6 +219,9 @@ BOOTSTRAP_SQL = "\n".join(
         SIGNAL_OUTCOMES_TABLE_DDL.strip(),
         PORTFOLIO_HISTORY_TABLE_DDL.strip(),
         STRATEGY_HISTORY_TABLE_DDL.strip(),
+        ETFS_TABLE_DDL.strip(),
+        ETF_HOLDINGS_TABLE_DDL.strip(),
+        ETF_HOLDINGS_SNAPSHOTS_TABLE_DDL.strip(),
         INDEX_DDL.strip(),
     ]
 )
@@ -174,9 +249,25 @@ def get_connection(db_path: Path | None = None) -> sqlite3.Connection:
 _bootstrapped_paths: set[str] = set()
 
 
+def _table_columns(connection: sqlite3.Connection, table: str) -> set[str]:
+    rows = connection.execute(f"PRAGMA table_info({table})").fetchall()
+    return {str(row[1]) for row in rows}
+
+
+def apply_schema_patches(connection: sqlite3.Connection) -> None:
+    """Additive migrations that keep existing databases intact."""
+    signal_columns = _table_columns(connection, "signals")
+    if signal_columns and "asset_type" not in signal_columns:
+        connection.execute("ALTER TABLE signals ADD COLUMN asset_type TEXT NOT NULL DEFAULT 'STOCK'")
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_signals_asset_type_created_at ON signals (asset_type, created_at)"
+    )
+
+
 def initialize_database(db_path: Path | None = None) -> None:
     with get_connection(db_path) as connection:
         connection.executescript(BOOTSTRAP_SQL)
+        apply_schema_patches(connection)
         connection.commit()
 
 
@@ -227,11 +318,15 @@ def connection_scope(db_path: Path | None = None) -> Iterator[sqlite3.Connection
 
 __all__ = [
     "BOOTSTRAP_SQL",
+    "ETFS_TABLE_DDL",
+    "ETF_HOLDINGS_SNAPSHOTS_TABLE_DDL",
+    "ETF_HOLDINGS_TABLE_DDL",
     "INDEX_DDL",
     "PORTFOLIO_HISTORY_TABLE_DDL",
     "SIGNALS_TABLE_DDL",
     "SIGNAL_OUTCOMES_TABLE_DDL",
     "STRATEGY_HISTORY_TABLE_DDL",
+    "apply_schema_patches",
     "bootstrap_database",
     "connection_scope",
     "ensure_schema",

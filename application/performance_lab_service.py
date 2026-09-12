@@ -81,13 +81,18 @@ class PerformanceLabService:
         self._signal_repository.ensure_schema()
         self._outcome_repository.ensure_schema()
 
-    def get_dashboard_summary(self) -> PerformanceSummary:
-        return self._summary_for_strategy(None)
+    def get_dashboard_summary(self, asset_type: str | None = None, ticker: str | None = None) -> PerformanceSummary:
+        return self._summary_for_strategy(None, asset_type=asset_type, ticker=ticker)
 
-    def get_strategy_summary(self, strategy_family: str) -> PerformanceSummary:
+    def get_strategy_summary(
+        self,
+        strategy_family: str,
+        asset_type: str | None = None,
+        ticker: str | None = None,
+    ) -> PerformanceSummary:
         if strategy_family not in SUPPORTED_SIGNAL_STRATEGIES:
             raise ValueError(f"Unsupported strategy_family: {strategy_family}")
-        return self._summary_for_strategy(strategy_family)
+        return self._summary_for_strategy(strategy_family, asset_type=asset_type, ticker=ticker)
 
     def get_performance_assumptions(self) -> dict[str, object]:
         return performance_assumptions_snapshot()
@@ -202,11 +207,20 @@ class PerformanceLabService:
             ),
         }
 
-    def get_score_buckets(self, strategy_family: str | None = None) -> list[dict[str, Any]]:
+    def get_score_buckets(
+        self,
+        strategy_family: str | None = None,
+        asset_type: str | None = None,
+        ticker: str | None = None,
+    ) -> list[dict[str, Any]]:
         ordering = {"80+": 0, "70-79": 1, "60-69": 2, "50-59": 3, "<50": 4}
         expectancy_rows = {
             str(row["score_bucket"]): row
-            for row in self._outcome_repository.get_resolved_stats_by_score_bucket(strategy_family)
+            for row in self._outcome_repository.get_resolved_stats_by_score_bucket(
+                strategy_family,
+                asset_type=asset_type,
+                ticker=ticker,
+            )
         }
         query = """
             SELECT
@@ -228,6 +242,12 @@ class PerformanceLabService:
         if strategy_family is not None:
             query += " AND s.strategy_family = ?"
             params.append(strategy_family)
+        if asset_type and asset_type.upper() not in {"ALL", "*"}:
+            query += " AND UPPER(COALESCE(s.asset_type, 'STOCK')) = ?"
+            params.append(asset_type.upper().strip())
+        if ticker:
+            query += " AND s.ticker = ?"
+            params.append(ticker.upper().strip())
         query += " GROUP BY score_bucket"
         with connection_scope(self._db_path) as connection:
             rows = connection.execute(query, params).fetchall()
@@ -276,11 +296,18 @@ class PerformanceLabService:
         bucket_rows.sort(key=lambda item: ordering.get(item["score_bucket"], 99))
         return bucket_rows
 
-    def get_recent_outcomes(self, limit: int = 50) -> list[dict[str, Any]]:
+    def get_recent_outcomes(
+        self,
+        limit: int = 50,
+        asset_type: str | None = None,
+        ticker: str | None = None,
+        strategy_family: str | None = None,
+    ) -> list[dict[str, Any]]:
         query = """
             SELECT
                 s.created_at,
                 s.ticker,
+                s.asset_type,
                 s.strategy_family,
                 s.source_quality,
                 s.score,
@@ -290,22 +317,35 @@ class PerformanceLabService:
                 o.exit_price,
                 o.status,
                 o.realized_return_pct,
+                o.max_favorable_excursion_pct,
+                o.max_adverse_excursion_pct,
                 o.holding_days,
                 o.evaluated_at
             FROM signal_outcomes o
             JOIN signals s ON s.signal_id = o.signal_id
             WHERE s.strategy_family IN ('short_term_day', 'short_term_swing')
-            ORDER BY o.evaluated_at DESC
-            LIMIT ?
         """
+        params: list[object] = []
+        if asset_type and asset_type.upper() not in {"ALL", "*"}:
+            query += " AND UPPER(COALESCE(s.asset_type, 'STOCK')) = ?"
+            params.append(asset_type.upper().strip())
+        if ticker:
+            query += " AND s.ticker = ?"
+            params.append(ticker.upper().strip())
+        if strategy_family:
+            query += " AND s.strategy_family = ?"
+            params.append(strategy_family)
+        query += " ORDER BY o.evaluated_at DESC LIMIT ?"
+        params.append(limit)
         with connection_scope(self._db_path) as connection:
-            rows = connection.execute(query, (limit,)).fetchall()
+            rows = connection.execute(query, params).fetchall()
 
         return [
             {
                 "created_at": row["created_at"],
                 "evaluated_at": row["evaluated_at"],
                 "ticker": row["ticker"],
+                "asset_type": row["asset_type"] or "STOCK",
                 "strategy": row["strategy_family"],
                 "source": row["source_quality"],
                 "score": int(round(float(row["score"]))) if row["score"] is not None else None,
@@ -315,6 +355,8 @@ class PerformanceLabService:
                 "exit_price": round(float(row["exit_price"]), 2) if row["exit_price"] is not None else None,
                 "status": row["status"],
                 "realized_return_pct": round(float(row["realized_return_pct"]), 2) if row["realized_return_pct"] is not None else None,
+                "max_favorable_excursion_pct": round(float(row["max_favorable_excursion_pct"]), 2) if row["max_favorable_excursion_pct"] is not None else None,
+                "max_adverse_excursion_pct": round(float(row["max_adverse_excursion_pct"]), 2) if row["max_adverse_excursion_pct"] is not None else None,
                 "holding_days": round(float(row["holding_days"]), 2) if row["holding_days"] is not None else None,
             }
             for row in rows
@@ -599,7 +641,12 @@ class PerformanceLabService:
             return float(net_expectancy)
         return float(row.get("historical_cohort_expectancy_pct") or 0.0)
 
-    def _summary_for_strategy(self, strategy_family: str | None) -> PerformanceSummary:
+    def _summary_for_strategy(
+        self,
+        strategy_family: str | None,
+        asset_type: str | None = None,
+        ticker: str | None = None,
+    ) -> PerformanceSummary:
         query = """
             SELECT
                 COUNT(*) AS total_signals,
@@ -615,11 +662,21 @@ class PerformanceLabService:
         if strategy_family is not None:
             query += " AND s.strategy_family = ?"
             params.append(strategy_family)
+        if asset_type and asset_type.upper() not in {"ALL", "*"}:
+            query += " AND UPPER(COALESCE(s.asset_type, 'STOCK')) = ?"
+            params.append(asset_type.upper().strip())
+        if ticker:
+            query += " AND s.ticker = ?"
+            params.append(ticker.upper().strip())
 
         with connection_scope(self._db_path) as connection:
             row = connection.execute(query, params).fetchone()
 
-        resolved_stats = self._outcome_repository.get_overall_resolved_stats(strategy_family)
+        resolved_stats = self._outcome_repository.get_overall_resolved_stats(
+            strategy_family,
+            asset_type=asset_type,
+            ticker=ticker,
+        )
         gross_expectancy = resolved_stats.get("expectancy_pct")
         assumptions = performance_assumptions_snapshot()
         estimated_cost_pct = estimated_round_trip_cost_pct()
