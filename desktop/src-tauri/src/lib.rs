@@ -1,335 +1,452 @@
-use std::net::TcpStream;
-use std::path::{Path, PathBuf};
+//! OmniTrade desktop shell.
+//!
+//! Responsibilities:
+//! * pick a free local port,
+//! * launch the bundled FastAPI backend (PyInstaller binary) as a managed child
+//!   process, pointed at a per-user writable data directory,
+//! * inject the resolved API base URL into the webview so the static frontend can
+//!   reach the backend on its dynamic port,
+//! * health-check the backend and log its output,
+//! * gracefully stop the backend on shutdown,
+//! * read/write the user's API keys and restart the backend to apply them.
+
+use std::fs::{self, OpenOptions};
+use std::io::{Read, Write};
+use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
-use std::thread;
 use std::time::{Duration, Instant};
 
-use tauri::Manager;
+use serde::{Deserialize, Serialize};
+use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
-const API_HOST: &str = "127.0.0.1";
-const API_PORT: u16 = 8788;
-const FRONTEND_PORT: u16 = 3000;
-const APP_URL: &str = "http://127.0.0.1:3000/overview";
-
-struct Runtime {
-    children: Mutex<Vec<Child>>,
+/// Managed process + configuration for the bundled backend.
+struct BackendState {
+    child: Mutex<Option<Child>>,
+    port: u16,
+    data_dir: PathBuf,
+    log_dir: PathBuf,
+    backend_exe: PathBuf,
 }
 
-impl Runtime {
-    fn new() -> Self {
-        Self {
-            children: Mutex::new(Vec::new()),
-        }
-    }
-
-    fn push(&self, child: Child) {
-        if let Ok(mut children) = self.children.lock() {
-            children.push(child);
-        }
-    }
-
-    fn shutdown(&self) {
-        if let Ok(mut children) = self.children.lock() {
-            for child in children.iter_mut() {
-                #[cfg(unix)]
-                {
-                    let pid = child.id();
-                    let _ = Command::new("kill")
-                        .args(["-TERM", &format!("-{pid}")])
-                        .status();
-                }
-                let _ = child.kill();
-                let _ = child.wait();
-            }
-            children.clear();
-        }
-    }
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+struct Settings {
+    #[serde(default)]
+    finnhub_api_key: String,
+    #[serde(default)]
+    fred_api_key: String,
+    #[serde(default)]
+    sec_edgar_user_agent: String,
+    #[serde(default)]
+    finnhub_configured: bool,
+    #[serde(default)]
+    fred_configured: bool,
+    #[serde(default)]
+    finnhub_hint: String,
+    #[serde(default)]
+    fred_hint: String,
 }
 
-impl Drop for Runtime {
-    fn drop(&mut self) {
-        self.shutdown();
+fn mask_secret(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return String::new();
     }
+    let tail: String = trimmed.chars().rev().take(4).collect::<String>().chars().rev().collect();
+    format!("••••{tail}")
 }
 
-pub fn is_repo_root(path: &Path) -> bool {
-    path.join("run_api.sh").is_file() && path.join("frontend").is_dir() && path.join("api").is_dir()
+fn is_masked_or_blank(value: &str) -> bool {
+    let trimmed = value.trim();
+    trimmed.is_empty() || trimmed.starts_with('•') || trimmed.starts_with('*')
 }
 
-pub fn find_repo_root() -> Result<PathBuf, String> {
-    if let Ok(value) = std::env::var("OMNITRADE_ROOT") {
-        let path = PathBuf::from(value);
-        if is_repo_root(&path) {
-            return Ok(path);
-        }
-        return Err(format!(
-            "OMNITRADE_ROOT is set to {} but that folder is not an OmniTrade repo.",
-            path.display()
-        ));
-    }
-
-    let compile_time = PathBuf::from(env!("OMNITRADE_REPO_ROOT"));
-    if is_repo_root(&compile_time) {
-        return Ok(compile_time);
-    }
-
-    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
-        for candidate in [
-            home.join("Omnitradev2"),
-            home.join("omnitradev2"),
-            home.join("OmniTrade"),
-            home.join("omnitrade"),
-        ] {
-            if is_repo_root(&candidate) {
-                return Ok(candidate);
-            }
-        }
-    }
-
-    if let Ok(exe) = std::env::current_exe() {
-        for ancestor in exe.ancestors() {
-            if is_repo_root(ancestor) {
-                return Ok(ancestor.to_path_buf());
-            }
-        }
-    }
-
-    Err(
-        "Could not find the OmniTrade source folder. Keep the git repo at ~/Omnitradev2, or set OMNITRADE_ROOT to that folder."
-            .to_string(),
-    )
+#[derive(Debug, Serialize)]
+struct BackendStatus {
+    port: u16,
+    healthy: bool,
+    data_dir: String,
+    log_dir: String,
 }
 
-pub fn allow_navigation(url: &url::Url) -> bool {
-    match url.scheme() {
-        "tauri" | "asset" | "ipc" | "data" | "blob" => true,
-        "http" | "https" => matches!(
-            url.host_str(),
-            Some("127.0.0.1")
-                | Some("localhost")
-                | Some("tauri.localhost")
-                | Some("asset.localhost")
-                | Some("ipc.localhost")
-        ),
-        _ => false,
+/// Ask the OS for an unused TCP port on the loopback interface.
+fn find_free_port() -> u16 {
+    TcpListener::bind("127.0.0.1:0")
+        .and_then(|listener| listener.local_addr())
+        .map(|addr| addr.port())
+        .unwrap_or(8788)
+}
+
+/// Locate the bundled backend executable inside the app's resource directory.
+fn backend_executable(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("could not resolve resource dir: {e}"))?;
+    let exe_name = if cfg!(windows) {
+        "omnitrade-backend.exe"
+    } else {
+        "omnitrade-backend"
+    };
+    let candidate = resource_dir
+        .join("backend")
+        .join("omnitrade-backend")
+        .join(exe_name);
+    if candidate.exists() {
+        Ok(candidate)
+    } else {
+        Err(format!(
+            "backend executable not found at {}",
+            candidate.display()
+        ))
     }
 }
 
-fn port_open(host: &str, port: u16) -> bool {
-    let Ok(addr) = format!("{host}:{port}").parse() else {
+/// Spawn the backend process, redirecting stdout/stderr to a rotating log file.
+fn spawn_backend(state: &BackendState) -> Result<Child, String> {
+    fs::create_dir_all(&state.log_dir).ok();
+    fs::create_dir_all(&state.data_dir).ok();
+    let log_path = state.log_dir.join("backend.log");
+    let stdout = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .map_err(|e| format!("could not open backend log: {e}"))?;
+    let stderr = stdout
+        .try_clone()
+        .map_err(|e| format!("could not clone log handle: {e}"))?;
+
+    let mut cmd = Command::new(&state.backend_exe);
+    cmd.arg("--host")
+        .arg("127.0.0.1")
+        .arg("--port")
+        .arg(state.port.to_string())
+        .env("OMNITRADE_DATA_DIR", &state.data_dir)
+        .env("OMNITRADE_WRITE_MODE", "local")
+        // Let the backend self-terminate if this shell dies abnormally.
+        .env("OMNITRADE_PARENT_PID", std::process::id().to_string())
+        .stdout(Stdio::from(stdout))
+        .stderr(Stdio::from(stderr));
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    cmd.spawn().map_err(|e| format!("failed to start backend: {e}"))
+}
+
+/// Minimal dependency-free HTTP health probe against `/api/health`.
+fn http_health_ok(port: u16) -> bool {
+    let addr: SocketAddr = match format!("127.0.0.1:{port}").parse() {
+        Ok(a) => a,
+        Err(_) => return false,
+    };
+    let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_millis(600)) else {
         return false;
     };
-    TcpStream::connect_timeout(&addr, Duration::from_millis(400)).is_ok()
+    stream
+        .set_read_timeout(Some(Duration::from_millis(2000)))
+        .ok();
+    stream
+        .set_write_timeout(Some(Duration::from_millis(2000)))
+        .ok();
+    let request = format!(
+        "GET /api/health HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
+    );
+    if stream.write_all(request.as_bytes()).is_err() {
+        return false;
+    }
+    let mut response = String::new();
+    let _ = stream.read_to_string(&mut response);
+    response.contains("200 OK") && response.contains("\"status\":\"ok\"")
 }
 
-fn wait_for_port(host: &str, port: u16, timeout: Duration) -> bool {
-    let started = Instant::now();
-    while started.elapsed() < timeout {
-        if port_open(host, port) {
+fn wait_for_health(port: u16, timeout: Duration) -> bool {
+    let start = Instant::now();
+    while start.elapsed() < timeout {
+        if http_health_ok(port) {
             return true;
         }
-        thread::sleep(Duration::from_millis(400));
+        std::thread::sleep(Duration::from_millis(300));
     }
     false
 }
 
-fn spawn_child(mut command: Command) -> Result<Child, String> {
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
+/// Stop the backend gracefully (SIGTERM → uvicorn clean shutdown), then force-kill
+/// if it does not exit within the grace period.
+fn terminate_child(child: &mut Child) {
     #[cfg(unix)]
     {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
-    command.spawn().map_err(|error| {
-        format!(
-            "Failed to start {}: {error}",
-            command.get_program().to_string_lossy()
-        )
-    })
-}
-
-fn start_api(repo: &Path, runtime: &Runtime) -> Result<(), String> {
-    if port_open(API_HOST, API_PORT) {
-        return Ok(());
-    }
-    let uvicorn = repo.join(".venv/bin/uvicorn");
-    if !uvicorn.is_file() {
-        return Err(format!(
-            "Python environment missing. In Terminal run:\ncd {}\npython3 -m venv .venv\n.venv/bin/pip install -r requirements.txt",
-            repo.display()
-        ));
-    }
-    let mut command = Command::new(uvicorn);
-    command
-        .current_dir(repo)
-        .args([
-            "api.main:app",
-            "--host",
-            API_HOST,
-            "--port",
-            &API_PORT.to_string(),
-        ])
-        .env("ENV", "development")
-        .env("OMNITRADE_WRITE_MODE", "local");
-    runtime.push(spawn_child(command)?);
-    if !wait_for_port(API_HOST, API_PORT, Duration::from_secs(40)) {
-        return Err("The OmniTrade API did not start on port 8788.".to_string());
-    }
-    Ok(())
-}
-
-fn start_frontend(repo: &Path, runtime: &Runtime) -> Result<(), String> {
-    if port_open(API_HOST, FRONTEND_PORT) {
-        return Ok(());
-    }
-    let frontend = repo.join("frontend");
-    let next_bin = frontend.join("node_modules/.bin/next");
-    if !next_bin.is_file() {
-        return Err(format!(
-            "Frontend dependencies missing. In Terminal run:\ncd {}\nnpm install",
-            frontend.display()
-        ));
-    }
-    let mut command = Command::new(next_bin);
-    command
-        .current_dir(&frontend)
-        .env("NEXT_PUBLIC_OMNITRADE_API_URL", "http://127.0.0.1:8788");
-    if frontend.join(".next").is_dir() {
-        command.args([
-            "start",
-            "--hostname",
-            API_HOST,
-            "--port",
-            &FRONTEND_PORT.to_string(),
-        ]);
-    } else {
-        command.args([
-            "dev",
-            "--webpack",
-            "--hostname",
-            API_HOST,
-            "--port",
-            &FRONTEND_PORT.to_string(),
-        ]);
-    }
-    runtime.push(spawn_child(command)?);
-    if !wait_for_port(API_HOST, FRONTEND_PORT, Duration::from_secs(90)) {
-        return Err("The OmniTrade frontend did not start on port 3000.".to_string());
-    }
-    Ok(())
-}
-
-fn js_string(value: &str) -> String {
-    serde_json::to_string(value).unwrap_or_else(|_| "\"Unknown error\"".to_string())
-}
-
-fn boot(window: tauri::WebviewWindow, runtime: tauri::State<'_, Runtime>) {
-    let runtime_error = {
-        let repo = match find_repo_root() {
-            Ok(path) => path,
-            Err(error) => {
-                let _ = window.eval(&format!("window.__omnitradeError({})", js_string(&error)));
+        let pid = child.id() as i32;
+        unsafe {
+            libc::kill(pid, libc::SIGTERM);
+        }
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_secs(5) {
+            if let Ok(Some(_)) = child.try_wait() {
                 return;
             }
-        };
-        if let Err(error) = start_api(&repo, &runtime) {
-            Some(error)
-        } else if let Err(error) = start_frontend(&repo, &runtime) {
-            Some(error)
-        } else {
-            None
+            std::thread::sleep(Duration::from_millis(100));
         }
-    };
-    if let Some(error) = runtime_error {
-        let _ = window.eval(&format!("window.__omnitradeError({})", js_string(&error)));
-        return;
+        let _ = child.kill();
+        let _ = child.wait();
     }
-    let _ = window.eval(&format!("window.location.replace({})", js_string(APP_URL)));
+    #[cfg(not(unix))]
+    {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
 }
 
-fn spawn_boot(app: &tauri::App) {
-    let handle = app.handle().clone();
-    thread::spawn(move || {
-        thread::sleep(Duration::from_millis(250));
-        let Some(window) = handle.get_webview_window("main") else {
-            return;
+/// `~/.config/omnitrade/secrets.env` — the exact path the backend reads for keys.
+fn secrets_path() -> Option<PathBuf> {
+    let home = if cfg!(windows) {
+        std::env::var_os("USERPROFILE")
+    } else {
+        std::env::var_os("HOME")
+    }?;
+    Some(
+        PathBuf::from(home)
+            .join(".config")
+            .join("omnitrade")
+            .join("secrets.env"),
+    )
+}
+
+fn restart_backend(app: &tauri::AppHandle) -> Result<(), String> {
+    let state = app.state::<BackendState>();
+    {
+        let mut guard = state.child.lock().map_err(|_| "state poisoned")?;
+        if let Some(mut child) = guard.take() {
+            terminate_child(&mut child);
+        }
+    }
+    let child = spawn_backend(&state)?;
+    *state.child.lock().map_err(|_| "state poisoned")? = Some(child);
+    wait_for_health(state.port, Duration::from_secs(30));
+    Ok(())
+}
+
+#[tauri::command]
+fn get_settings() -> Result<Settings, String> {
+    let Some(path) = secrets_path() else {
+        return Ok(Settings::default());
+    };
+    if !path.exists() {
+        return Ok(Settings::default());
+    }
+    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let mut settings = Settings::default();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') || !trimmed.contains('=') {
+            continue;
+        }
+        let Some((key, value)) = trimmed.split_once('=') else {
+            continue;
         };
-        let runtime = handle.state::<Runtime>();
-        boot(window, runtime);
-    });
+        let value = value
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'')
+            .to_string();
+        match key.trim() {
+            "FINNHUB_API_KEY" => {
+                settings.finnhub_configured = !value.is_empty();
+                settings.finnhub_hint = mask_secret(&value);
+            }
+            "FRED_API_KEY" => {
+                settings.fred_configured = !value.is_empty();
+                settings.fred_hint = mask_secret(&value);
+            }
+            "SEC_EDGAR_USER_AGENT" => settings.sec_edgar_user_agent = value,
+            _ => {}
+        }
+    }
+    // Never send raw provider keys into the webview.
+    settings.finnhub_api_key.clear();
+    settings.fred_api_key.clear();
+    Ok(settings)
+}
+
+fn read_raw_secret(path: &PathBuf, name: &str) -> String {
+    let Ok(content) = fs::read_to_string(path) else {
+        return String::new();
+    };
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') || !trimmed.contains('=') {
+            continue;
+        }
+        let Some((key, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        if key.trim() == name {
+            return value.trim().trim_matches('"').trim_matches('\'').to_string();
+        }
+    }
+    String::new()
+}
+
+#[tauri::command]
+fn save_settings(app: tauri::AppHandle, settings: Settings) -> Result<(), String> {
+    let Some(path) = secrets_path() else {
+        return Err("could not resolve home directory".into());
+    };
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let existing_finnhub = read_raw_secret(&path, "FINNHUB_API_KEY");
+    let existing_fred = read_raw_secret(&path, "FRED_API_KEY");
+    let finnhub = if is_masked_or_blank(&settings.finnhub_api_key) {
+        existing_finnhub
+    } else {
+        settings.finnhub_api_key.trim().to_string()
+    };
+    let fred = if is_masked_or_blank(&settings.fred_api_key) {
+        existing_fred
+    } else {
+        settings.fred_api_key.trim().to_string()
+    };
+    let content = format!(
+        "# Managed by OmniTrade desktop. Keys are stored locally only.\n\
+         FINNHUB_API_KEY={}\n\
+         FRED_API_KEY={}\n\
+         SEC_EDGAR_USER_AGENT=\"{}\"\n",
+        finnhub,
+        fred,
+        settings.sec_edgar_user_agent.trim(),
+    );
+    fs::write(&path, content).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+    }
+    // Restart the backend so the newly saved keys are picked up.
+    restart_backend(&app)?;
+    Ok(())
+}
+
+#[tauri::command]
+fn backend_status(state: tauri::State<BackendState>) -> BackendStatus {
+    BackendStatus {
+        port: state.port,
+        healthy: http_health_ok(state.port),
+        data_dir: state.data_dir.display().to_string(),
+        log_dir: state.log_dir.display().to_string(),
+    }
+}
+
+/// Open a file-system path with the OS default handler (used for logs/data dirs).
+#[tauri::command]
+fn open_path(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let program = "open";
+    #[cfg(target_os = "windows")]
+    let program = "explorer";
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let program = "xdg-open";
+
+    Command::new(program)
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+fn stop_backend(app_handle: &tauri::AppHandle) {
+    if let Some(state) = app_handle.try_state::<BackendState>() {
+        if let Ok(mut guard) = state.child.lock() {
+            if let Some(mut child) = guard.take() {
+                terminate_child(&mut child);
+            }
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .manage(Runtime::new())
+        .invoke_handler(tauri::generate_handler![
+            get_settings,
+            save_settings,
+            backend_status,
+            open_path
+        ])
         .setup(|app| {
-            let window_config = app
-                .config()
-                .app
-                .windows
-                .first()
-                .cloned()
-                .expect("main window config");
-            let _window = tauri::WebviewWindowBuilder::from_config(app, &window_config)?
-                .on_navigation(allow_navigation)
+            let handle = app.handle().clone();
+
+            let data_dir = handle
+                .path()
+                .app_data_dir()
+                .map_err(|e| format!("could not resolve app data dir: {e}"))?;
+            fs::create_dir_all(&data_dir).ok();
+
+            let log_dir = handle
+                .path()
+                .app_log_dir()
+                .map_err(|e| format!("could not resolve app log dir: {e}"))?;
+            fs::create_dir_all(&log_dir).ok();
+
+            let backend_exe = backend_executable(&handle)?;
+            let port = find_free_port();
+
+            let state = BackendState {
+                child: Mutex::new(None),
+                port,
+                data_dir,
+                log_dir,
+                backend_exe,
+            };
+            let child = spawn_backend(&state)?;
+            *state.child.lock().unwrap() = Some(child);
+            app.manage(state);
+
+            // Log backend readiness in the background (non-blocking startup).
+            std::thread::spawn(move || {
+                let ready = wait_for_health(port, Duration::from_secs(60));
+                eprintln!(
+                    "[omnitrade] backend on port {port}: {}",
+                    if ready { "ready" } else { "not ready (timeout)" }
+                );
+            });
+
+            // Inject the dynamic API base before any frontend code runs.
+            let init_script = format!(
+                "window.__OMNITRADE_API_BASE__ = \"http://127.0.0.1:{port}\";"
+            );
+            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                .title("OmniTrade")
+                .inner_size(1440.0, 900.0)
+                .min_inner_size(1024.0, 700.0)
+                .initialization_script(&init_script)
                 .build()?;
-            spawn_boot(app);
+
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                window.state::<Runtime>().shutdown();
+        .build(tauri::generate_context!())
+        .expect("error while building OmniTrade")
+        .run(|app_handle, event| {
+            if let RunEvent::ExitRequested { .. } = event {
+                stop_backend(app_handle);
             }
-        })
-        .run(tauri::generate_context!())
-        .expect("error while running OmniTrade");
+        });
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{allow_navigation, is_repo_root};
-    use std::fs;
-    use std::path::PathBuf;
-
-    fn repo_root() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .and_then(|path| path.parent())
-            .expect("repo root")
-            .to_path_buf()
-    }
+    use super::find_free_port;
+    use std::net::TcpStream;
 
     #[test]
-    fn repo_root_requires_api_frontend_and_launcher() {
-        let root = repo_root();
-        assert!(is_repo_root(&root));
-
-        let tmp = root.join("desktop/src-tauri/target/tmp-root-check");
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).unwrap();
-        assert!(!is_repo_root(&tmp));
-        let _ = fs::remove_dir_all(&tmp);
-    }
-
-    #[test]
-    fn navigation_allows_local_app_and_blocks_remote() {
-        let allowed = [
-            "http://127.0.0.1:3000/overview",
-            "http://localhost:3000/etf",
-            "https://127.0.0.1:3000/",
-            "tauri://localhost/index.html",
-        ];
-        for value in allowed {
-            let url = url::Url::parse(value).unwrap();
-            assert!(allow_navigation(&url), "{value}");
-        }
-
-        let blocked = url::Url::parse("https://example.com/").unwrap();
-        assert!(!allow_navigation(&blocked));
+    fn find_free_port_returns_a_bindable_localhost_port() {
+        let port = find_free_port();
+        assert_ne!(port, 0);
+        assert!(TcpStream::connect(("127.0.0.1", port)).is_err());
     }
 }

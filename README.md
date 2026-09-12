@@ -9,7 +9,7 @@ OmniTrade is a local stock-screening dashboard with a Streamlit app, a FastAPI A
 - Next.js frontend: `frontend/`
 - Local demo data: `data_store/demo_data.json`
 - Clickable launchers for local desktop and same-Wi-Fi phone access
-- Mac app builder: `desktop/` (Tauri launcher around this git checkout)
+- Mac/Windows app builder: `desktop/` (Tauri + PyInstaller + static Next export)
 
 ## Setup
 
@@ -73,17 +73,21 @@ read-only mode.
 
 ## Rebuild the Mac app
 
-`OmniTrade.app` is a Tauri launcher around this git repo. `git pull` updates source only; it does not refresh a copy already in `/Applications`.
+The packaged app is a Tauri shell around a **static Next export** and a **PyInstaller FastAPI bundle**. It does not launch `./run_api.sh` or `npm run dev`. `git pull` updates source only; rebuild to refresh `/Applications`.
 
-From the repo root on a Mac with Xcode Command Line Tools, Node, Rust, and Python:
+From the repo root (the folder with `README.md` and `desktop/build_desktop.sh`), on a Mac with Xcode Command Line Tools, Node, Rust, Python 3.12, and the Tauri CLI:
 
 ```bash
-chmod +x desktop/build-mac.sh
-./desktop/build-mac.sh
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt pyinstaller
+npm --prefix frontend install
+export PATH="$HOME/.cargo/bin:$PATH"
+cargo install tauri-cli --version "^2" --locked
+bash desktop/build_desktop.sh
 open desktop/src-tauri/target/release/bundle/macos/OmniTrade.app
 ```
 
-Keep the clone at `~/Omnitradev2`, or set `OMNITRADE_ROOT` to the repo path. See `desktop/README.md` before replacing `/Applications/OmniTrade.app`.
+`~/.cargo/bin/cargo-tauri` is the compiler, not the app. See `desktop/README.md`.
 
 ## Run from your phone on the same Wi-Fi
 
