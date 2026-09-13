@@ -52,7 +52,7 @@ const holdingColumns: DataTableColumn<Row>[] = [
 
 export function EtfAnalysisPage() {
   const params = useParams<{ symbol: string }>();
-  const ticker = String(params.symbol ?? "").toUpperCase();
+  const ticker = decodeURIComponent(String(params.symbol ?? "")).toUpperCase();
   const [data, setData] = useState<Row | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);

@@ -624,10 +624,22 @@ export function fetchForecast(
   return request<ForecastPayload>(`/api/forecast/${encodeURIComponent(ticker)}?${params.toString()}`);
 }
 
+export type EtfListingRegionPayload = {
+  key: string;
+  label: string;
+  short_label: string;
+  description: string;
+  universe_name: string;
+  ticker_count?: number;
+};
+
 export type EtfScreenerPayload = {
   updated_at?: string;
   source?: string;
   universe_name?: string;
+  universe?: string[];
+  region?: string;
+  regions?: EtfListingRegionPayload[];
   rows?: ApiRecord[];
   failures?: string[];
   note?: string;
@@ -638,9 +650,12 @@ export type EtfScreenerPayload = {
 
 export type EtfAnalysisPayload = ApiRecord;
 
-export async function fetchEtfRefreshStatus(): Promise<RefreshStatusPayload> {
+export async function fetchEtfRefreshStatus(region?: string): Promise<RefreshStatusPayload> {
+  const params = new URLSearchParams();
+  if (region) params.set("region", region);
+  const suffix = params.toString();
   try {
-    return await request<RefreshStatusPayload>("/api/etf/refresh-status");
+    return await request<RefreshStatusPayload>(`/api/etf/refresh-status${suffix ? `?${suffix}` : ""}`);
   } catch {
     return { refresh_status: "idle", status: "idle" };
   }
@@ -664,6 +679,9 @@ export function fetchEtfCompare(symbols: string[]): Promise<ApiRecord> {
   return request<ApiRecord>(`/api/etf/compare?symbols=${encodeURIComponent(symbols.join(","))}`);
 }
 
-export function fetchEtfUnderlyingSignals(): Promise<{ etfs?: ApiRecord[] }> {
-  return request<{ etfs?: ApiRecord[] }>("/api/etf/underlying-signals");
+export function fetchEtfUnderlyingSignals(region?: string): Promise<{ etfs?: ApiRecord[] }> {
+  const params = new URLSearchParams();
+  if (region) params.set("region", region);
+  const suffix = params.toString();
+  return request<{ etfs?: ApiRecord[] }>(`/api/etf/underlying-signals${suffix ? `?${suffix}` : ""}`);
 }

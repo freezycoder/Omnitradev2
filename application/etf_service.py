@@ -10,12 +10,17 @@ import pandas as pd
 
 from application.etf_signal_service import log_etf_signals
 from config.etf import (
-    DEFAULT_ETF_UNIVERSE,
-    ETF_SCREENER_CACHE_KEY,
+    ALL_ETF_TICKER_SET,
+    ALL_ETF_TICKERS,
     ETF_SCREENER_PAGE_SIZE,
-    ETF_UNIVERSE_NAME,
     MIN_ETF_EXPOSURE_WEIGHT,
     EtfUniverseFilters,
+    cache_key_for_region,
+    cache_keys_for_region,
+    listing_regions_payload,
+    normalize_etf_region,
+    universe_for,
+    universe_name_for,
 )
 from domain.assets import AssetType
 from domain.etf.exposure import UnderlyingSignalExposure, reverse_etf_exposure, thematic_exposure_score
@@ -51,11 +56,12 @@ def _history_records(history: pd.DataFrame) -> list[dict[str, Any]]:
 
 
 def _is_etf_profile(profile: EtfProfile | None, ticker: str) -> bool:
+    normalized = ticker.upper().strip()
     if profile is None:
-        return ticker.upper() in DEFAULT_ETF_UNIVERSE
+        return normalized in ALL_ETF_TICKER_SET
     quote_type = (profile.quote_type or "").upper()
     asset_class = (profile.asset_class or "").upper()
-    if ticker.upper() in DEFAULT_ETF_UNIVERSE:
+    if normalized in ALL_ETF_TICKER_SET:
         return True
     if quote_type in EQUITY_QUOTE_TYPES or "ETF" in asset_class or "FUND" in asset_class:
         return True
@@ -118,8 +124,15 @@ class EtfService:
                 )
         return snapshot
 
-    def search(self, filters: EtfUniverseFilters, *, offset: int = 0, limit: int = ETF_SCREENER_PAGE_SIZE) -> dict[str, Any]:
-        universe = DEFAULT_ETF_UNIVERSE
+    def search(
+        self,
+        filters: EtfUniverseFilters,
+        *,
+        region: str | None = None,
+        offset: int = 0,
+        limit: int = ETF_SCREENER_PAGE_SIZE,
+    ) -> dict[str, Any]:
+        universe = universe_for(region)
         profiles = self._repository.list_profiles(filters=filters, tickers=universe)
         if filters.ticker:
             extra = filters.ticker.upper().strip()
@@ -136,26 +149,24 @@ class EtfService:
             "results": [profile.to_dict() for profile in page],
         }
 
-    def empty_screener(self, *, message: str, refresh_status: str = "idle") -> dict[str, Any]:
+    def empty_screener(self, *, message: str, refresh_status: str = "idle", region: str | None = None) -> dict[str, Any]:
         return {
+            **self._screener_meta(region),
             "updated_at": None,
             "source": "unavailable",
-            "universe_name": ETF_UNIVERSE_NAME,
-            "universe": list(DEFAULT_ETF_UNIVERSE),
-            "asset_type": AssetType.ETF,
             "rows": [],
             "failures": [],
             "filtered_count": 0,
-            "note": "ETF OmniScore is a research composite and is not a validated forecast.",
             "refresh_status": refresh_status,
             "api_note": message,
         }
 
-    def cached_screener(self, filters: EtfUniverseFilters | None = None) -> dict[str, Any] | None:
-        cached = load_named_scan_cache(ETF_SCREENER_CACHE_KEY)
-        if not cached:
-            return None
-        return self._filter_screener(cached, filters)
+    def cached_screener(self, filters: EtfUniverseFilters | None = None, *, region: str | None = None) -> dict[str, Any] | None:
+        for cache_key in cache_keys_for_region(region):
+            cached = load_named_scan_cache(cache_key)
+            if cached:
+                return self._filter_screener({**cached, **self._screener_meta(region)}, filters)
+        return None
 
     def build_screener(
         self,
@@ -163,16 +174,20 @@ class EtfService:
         *,
         refresh: bool = False,
         log_signals: bool = False,
+        region: str | None = None,
     ) -> dict[str, Any]:
+        normalized_region = normalize_etf_region(region)
         if not refresh:
-            cached = self.cached_screener(filters)
+            cached = self.cached_screener(filters, region=normalized_region)
             if cached:
                 return {**cached, "refresh_status": cached.get("refresh_status") or "idle"}
             return self.empty_screener(
-                message="No ETF rows are cached yet. Use Refresh cache to pull provider data in the background."
+                message="No ETF rows are cached yet. Use Refresh cache to pull provider data in the background.",
+                region=normalized_region,
             )
 
-        tickers = list(DEFAULT_ETF_UNIVERSE)
+        tickers = universe_for(normalized_region)
+        cache_key = cache_key_for_region(normalized_region)
         profiles = []
         failures: list[str] = []
         for ticker in tickers:
@@ -193,7 +208,7 @@ class EtfService:
             history = histories.get(profile.ticker, pd.DataFrame())
             metrics = build_performance_metrics(history)
             # Screener uses cached holdings only. Live holdings stay on the analysis page
-            # so a 40-ETF universe refresh can finish without one yfinance scrape per fund.
+            # so a regional universe refresh can finish without one yfinance scrape per fund.
             holdings = self._repository.get_holdings(profile.ticker, require_fresh=False)
             underlying_score, coverage, _contributors = thematic_exposure_score(
                 holdings.holdings if holdings else (),
@@ -243,29 +258,23 @@ class EtfService:
                     }
                 )
             payload = {
+                **self._screener_meta(normalized_region),
                 "updated_at": _now(),
                 "source": "live",
-                "universe_name": ETF_UNIVERSE_NAME,
-                "universe": tickers,
-                "asset_type": AssetType.ETF,
                 "rows": rows,
                 "failures": failures,
                 "partial": len(rows) < len(profiles),
-                "note": "ETF OmniScore is a research composite and is not a validated forecast.",
             }
-            save_named_scan_cache(ETF_SCREENER_CACHE_KEY, _json_safe_screener(payload))
+            save_named_scan_cache(cache_key, _json_safe_screener(payload))
         payload = {
+            **self._screener_meta(normalized_region),
             "updated_at": _now(),
             "source": "live",
-            "universe_name": ETF_UNIVERSE_NAME,
-            "universe": tickers,
-            "asset_type": AssetType.ETF,
             "rows": rows,
             "failures": failures,
             "partial": False,
-            "note": "ETF OmniScore is a research composite and is not a validated forecast.",
         }
-        save_named_scan_cache(ETF_SCREENER_CACHE_KEY, _json_safe_screener(payload))
+        save_named_scan_cache(cache_key, _json_safe_screener(payload))
         if log_signals:
             for item in analyses_for_signals:
                 log_etf_signals(
@@ -442,12 +451,13 @@ class EtfService:
             "etfs": [row.to_dict() for row in rows],
         }
 
-    def underlying_exposures(self) -> list[dict[str, Any]]:
+    def underlying_exposures(self, *, region: str | None = None) -> list[dict[str, Any]]:
         stock_scores = load_stock_signal_scores()
         if not stock_scores:
             return []
         results: list[UnderlyingSignalExposure] = []
-        for ticker in DEFAULT_ETF_UNIVERSE:
+        tickers = universe_for(region) if region is not None else list(ALL_ETF_TICKERS)
+        for ticker in tickers:
             holdings = self._repository.get_holdings(ticker)
             if holdings is None:
                 continue
@@ -466,6 +476,17 @@ class EtfService:
             )
         results.sort(key=lambda item: item.exposure_score, reverse=True)
         return [item.to_dict() for item in results]
+
+    def _screener_meta(self, region: str | None = None) -> dict[str, Any]:
+        normalized = normalize_etf_region(region)
+        return {
+            "region": normalized,
+            "regions": listing_regions_payload(),
+            "universe_name": universe_name_for(normalized),
+            "universe": universe_for(normalized),
+            "asset_type": AssetType.ETF,
+            "note": "ETF OmniScore is a research composite and is not a validated forecast. Listing region is the exchange the fund trades on, not holdings geography.",
+        }
 
     def _filter_screener(self, payload: dict[str, Any], filters: EtfUniverseFilters | None) -> dict[str, Any]:
         rows = list(payload.get("rows") or [])

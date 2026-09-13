@@ -34,9 +34,9 @@ ANALYTICS_CACHE_TTL_SECONDS = 120.0
 _OVERVIEW_REFRESH_LOCK = Lock()
 _OVERVIEW_REFRESH_STATE_LOCK = Lock()
 _OVERVIEW_REFRESH_JOB: dict[str, Any] | None = None
-_ETF_REFRESH_LOCK = Lock()
 _ETF_REFRESH_STATE_LOCK = Lock()
-_ETF_REFRESH_JOB: dict[str, Any] | None = None
+_ETF_REFRESH_LOCKS: dict[str, Lock] = {}
+_ETF_REFRESH_JOBS: dict[str, dict[str, Any]] = {}
 _ANALYTICS_RESPONSE_CACHE = TtlResponseCache()
 
 
@@ -990,18 +990,37 @@ def kronos_forecast_health() -> Any:
         return {"enabled": True, "status": "unavailable", "message": str(exc)}
 
 
-def _etf_refresh_job_public_snapshot(job: dict[str, Any] | None = None) -> dict[str, Any]:
+def _etf_region_lock(region: str) -> Lock:
+    from config.etf import normalize_etf_region
+
+    normalized = normalize_etf_region(region)
     with _ETF_REFRESH_STATE_LOCK:
-        current = dict(job if job is not None else (_ETF_REFRESH_JOB or {}))
+        lock = _ETF_REFRESH_LOCKS.get(normalized)
+        if lock is None:
+            lock = Lock()
+            _ETF_REFRESH_LOCKS[normalized] = lock
+        return lock
+
+
+def _etf_refresh_job_public_snapshot(*, region: str | None = None, job: dict[str, Any] | None = None) -> dict[str, Any]:
+    from config.etf import normalize_etf_region, universe_name_for
+
+    normalized = normalize_etf_region(region)
+    with _ETF_REFRESH_STATE_LOCK:
+        current = dict(job if job is not None else (_ETF_REFRESH_JOBS.get(normalized) or {}))
     if not current:
         return {
             "refresh_status": "idle",
             "status": "idle",
+            "region": normalized,
+            "universe_name": universe_name_for(normalized),
             "message": "No ETF universe refresh has been requested in this API process.",
         }
     return {
         "refresh_status": current.get("status", "idle"),
         "status": current.get("status", "idle"),
+        "region": current.get("region", normalized),
+        "universe_name": current.get("universe_name") or universe_name_for(normalized),
         "job_id": current.get("job_id"),
         "started_at": current.get("started_at"),
         "finished_at": current.get("finished_at"),
@@ -1013,86 +1032,103 @@ def _etf_refresh_job_public_snapshot(job: dict[str, Any] | None = None) -> dict[
     }
 
 
-def _store_etf_refresh_job_update(job_id: str, **updates: Any) -> None:
+def _store_etf_refresh_job_update(job_id: str, region: str, **updates: Any) -> None:
+    from config.etf import normalize_etf_region
+
+    normalized = normalize_etf_region(region)
     with _ETF_REFRESH_STATE_LOCK:
-        if not _ETF_REFRESH_JOB or _ETF_REFRESH_JOB.get("job_id") != job_id:
+        current = _ETF_REFRESH_JOBS.get(normalized)
+        if not current or current.get("job_id") != job_id:
             return
-        _ETF_REFRESH_JOB.update(updates)
+        current.update(updates)
 
 
-def _run_etf_refresh_job(job_id: str) -> None:
+def _run_etf_refresh_job(job_id: str, region: str) -> None:
     from application.etf_service import EtfService
+    from config.etf import universe_name_for
 
+    region_lock = _etf_region_lock(region)
     try:
-        payload = EtfService().build_screener(refresh=True, log_signals=True)
+        payload = EtfService().build_screener(refresh=True, log_signals=True, region=region)
         _store_etf_refresh_job_update(
             job_id,
+            region,
             status="complete",
             finished_at=_now_iso(),
             updated_at=payload.get("updated_at"),
             source=payload.get("source"),
             row_count=len(payload.get("rows") or []),
-            message="ETF universe refresh complete.",
+            message=f"{universe_name_for(region)} refresh complete.",
             error=None,
         )
     except Exception as exc:
-        log.exception("ETF screener refresh job failed")
+        log.exception("ETF screener refresh job failed for region %s", region)
         _store_etf_refresh_job_update(
             job_id,
+            region,
             status="failed",
             finished_at=_now_iso(),
             message="ETF universe refresh failed before a newer snapshot could be published.",
             error=str(exc),
         )
     finally:
-        _ETF_REFRESH_LOCK.release()
+        region_lock.release()
 
 
-def _start_etf_refresh_job() -> dict[str, Any]:
-    if not _ETF_REFRESH_LOCK.acquire(blocking=False):
-        return {**_etf_refresh_job_public_snapshot(), "already_running": True}
+def _start_etf_refresh_job(region: str | None = None) -> dict[str, Any]:
+    from config.etf import normalize_etf_region, universe_name_for
+
+    normalized = normalize_etf_region(region)
+    region_lock = _etf_region_lock(normalized)
+    if not region_lock.acquire(blocking=False):
+        return {**_etf_refresh_job_public_snapshot(region=normalized), "already_running": True}
 
     job_id = uuid.uuid4().hex
     job = {
         "job_id": job_id,
         "status": "running",
+        "region": normalized,
+        "universe_name": universe_name_for(normalized),
         "started_at": _now_iso(),
         "finished_at": None,
         "updated_at": None,
         "source": None,
         "row_count": 0,
-        "message": "An ETF universe refresh is running in the background.",
+        "message": f"A {universe_name_for(normalized)} refresh is running in the background.",
         "error": None,
     }
     with _ETF_REFRESH_STATE_LOCK:
-        global _ETF_REFRESH_JOB
-        _ETF_REFRESH_JOB = job
-    initial_snapshot = _etf_refresh_job_public_snapshot(job)
+        _ETF_REFRESH_JOBS[normalized] = job
+    initial_snapshot = _etf_refresh_job_public_snapshot(region=normalized, job=job)
 
     try:
-        Thread(target=_run_etf_refresh_job, kwargs={"job_id": job_id}, daemon=True).start()
+        Thread(target=_run_etf_refresh_job, kwargs={"job_id": job_id, "region": normalized}, daemon=True).start()
     except Exception:
         _store_etf_refresh_job_update(
             job_id,
+            normalized,
             status="failed",
             finished_at=_now_iso(),
             message="ETF universe refresh could not be started.",
         )
-        _ETF_REFRESH_LOCK.release()
+        region_lock.release()
         raise
 
     return {**initial_snapshot, "already_running": False}
 
 
-def _load_etf_screener_payload(*, refresh: bool, filters: Any) -> dict[str, Any]:
+def _load_etf_screener_payload(*, refresh: bool, filters: Any, region: str | None = None) -> dict[str, Any]:
     from application.etf_service import EtfService
+    from config.etf import normalize_etf_region
 
+    normalized = normalize_etf_region(region)
     service = EtfService()
     if refresh:
-        job = _start_etf_refresh_job()
-        cached = service.cached_screener(filters) or service.empty_screener(
+        job = _start_etf_refresh_job(normalized)
+        cached = service.cached_screener(filters, region=normalized) or service.empty_screener(
             message="An ETF universe refresh is running in the background.",
             refresh_status=job["refresh_status"],
+            region=normalized,
         )
         already = job.get("already_running")
         return {
@@ -1107,23 +1143,36 @@ def _load_etf_screener_payload(*, refresh: bool, filters: Any) -> dict[str, Any]
             + "Rows appear as the cache is published; this request does not wait for yfinance.",
         }
 
-    cached = service.cached_screener(filters)
+    cached = service.cached_screener(filters, region=normalized)
     if cached:
-        return {**cached, "refresh_status": _etf_refresh_job_public_snapshot().get("refresh_status", "idle")}
-    status = _etf_refresh_job_public_snapshot()
+        return {
+            **cached,
+            "refresh_status": _etf_refresh_job_public_snapshot(region=normalized).get("refresh_status", "idle"),
+        }
+    status = _etf_refresh_job_public_snapshot(region=normalized)
     if status.get("refresh_status") == "running":
         return service.empty_screener(
             message="An ETF universe refresh is running in the background.",
             refresh_status="running",
+            region=normalized,
         )
     return service.empty_screener(
-        message="No ETF rows are cached yet. Use Refresh cache to pull provider data in the background."
+        message="No ETF rows are cached yet. Use Refresh cache to pull provider data in the background.",
+        region=normalized,
     )
+
+
+@app.get("/api/etf/regions")
+async def etf_regions() -> Any:
+    from config.etf import DEFAULT_ETF_REGION, listing_regions_payload
+
+    return {"default": DEFAULT_ETF_REGION, "regions": listing_regions_payload()}
 
 
 @app.get("/api/etf")
 async def etf_screener(
     refresh: bool = Query(default=False),
+    region: str | None = Query(default=None, description="Listing region: us, europe, or asia_pacific"),
     ticker: str | None = Query(default=None),
     name: str | None = Query(default=None),
     issuer: str | None = Query(default=None),
@@ -1136,7 +1185,7 @@ async def etf_screener(
     min_average_volume: float | None = Query(default=None),
     min_dividend_yield: float | None = Query(default=None),
 ) -> Any:
-    from config.etf import EtfUniverseFilters
+    from config.etf import EtfUniverseFilters, normalize_etf_region
 
     filters = EtfUniverseFilters(
         ticker=ticker,
@@ -1151,18 +1200,22 @@ async def etf_screener(
         min_average_volume=min_average_volume,
         min_dividend_yield=min_dividend_yield,
     )
+    normalized_region = normalize_etf_region(region)
     return await _run_service(
         "etf_screener",
-        lambda: _load_etf_screener_payload(refresh=refresh, filters=filters),
+        lambda: _load_etf_screener_payload(refresh=refresh, filters=filters, region=normalized_region),
         timeout_seconds=30.0,
     )
 
 
 @app.get("/api/etf/refresh-status")
-async def etf_refresh_status() -> Any:
+async def etf_refresh_status(region: str | None = Query(default=None)) -> Any:
+    from config.etf import normalize_etf_region
+
+    normalized = normalize_etf_region(region)
     return await _run_service(
         "etf_refresh_status",
-        _etf_refresh_job_public_snapshot,
+        lambda: _etf_refresh_job_public_snapshot(region=normalized),
         timeout_seconds=10.0,
     )
 
@@ -1189,10 +1242,15 @@ async def etf_stock_exposure(ticker: str) -> Any:
 
 
 @app.get("/api/etf/underlying-signals")
-async def etf_underlying_signals() -> Any:
+async def etf_underlying_signals(region: str | None = Query(default=None)) -> Any:
     from application.etf_service import EtfService
+    from config.etf import normalize_etf_region
 
-    return await _run_service("etf_underlying_signals", lambda: {"etfs": EtfService().underlying_exposures()})
+    normalized = normalize_etf_region(region) if region else None
+    return await _run_service(
+        "etf_underlying_signals",
+        lambda: {"etfs": EtfService().underlying_exposures(region=normalized)},
+    )
 
 
 @app.get("/api/etf/{ticker}")

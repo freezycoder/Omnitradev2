@@ -1,13 +1,21 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { DataTable, DataTableColumn, etfHref } from "@/components/DataTable";
 import { EtfTabs } from "@/components/EtfTabs";
 import { LoadingState } from "@/components/LoadingState";
 import { SectionHeader } from "@/components/SectionHeader";
-import { StatusBadge } from "@/components/StatusBadge";
 import { TerminalPanel } from "@/components/TerminalPanel";
-import { EtfScreenerPayload, fetchEtfRefreshStatus, fetchEtfScreener, fetchEtfUnderlyingSignals } from "@/lib/api";
+import { EtfListingRegionPayload, EtfScreenerPayload, fetchEtfRefreshStatus, fetchEtfScreener, fetchEtfUnderlyingSignals } from "@/lib/api";
+import {
+  DEFAULT_ETF_REGION,
+  ETF_LISTING_REGIONS,
+  EtfListingRegionKey,
+  normalizeEtfRegion,
+  readStoredEtfRegion,
+  storeEtfRegion
+} from "@/lib/etfRegions";
 import { asNumber, formatAvailable, formatLargeNumber, formatPct, formatSignedPct, pickArray } from "@/lib/format";
 
 type Row = Record<string, unknown>;
@@ -39,7 +47,17 @@ const columns: DataTableColumn<Row>[] = [
   { key: "omni_score", header: "OmniScore", align: "right", render: (row) => formatAvailable(row.omni_score, (value) => value.toFixed(1)) }
 ];
 
+function initialRegion(searchParams: URLSearchParams): EtfListingRegionKey {
+  const fromUrl = searchParams.get("region");
+  if (fromUrl) return normalizeEtfRegion(fromUrl);
+  return normalizeEtfRegion(readStoredEtfRegion() ?? DEFAULT_ETF_REGION);
+}
+
 export function EtfScreenerPage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [region, setRegion] = useState<EtfListingRegionKey>(() => initialRegion(searchParams));
   const [data, setData] = useState<EtfScreenerPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,37 +73,67 @@ export function EtfScreenerPage() {
   const [minVolume, setMinVolume] = useState("");
   const [minYield, setMinYield] = useState("");
   const [underlying, setUnderlying] = useState<Row[]>([]);
+  const requestId = useRef(0);
 
-  function load(refresh = false) {
+  function syncRegionUrl(nextRegion: EtfListingRegionKey) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextRegion === DEFAULT_ETF_REGION) {
+      params.delete("region");
+    } else {
+      params.set("region", nextRegion);
+    }
+    const suffix = params.toString();
+    router.replace(suffix ? `${pathname}?${suffix}` : pathname, { scroll: false });
+  }
+
+  function selectRegion(nextRegion: EtfListingRegionKey) {
+    if (nextRegion === region) return;
+    storeEtfRegion(nextRegion);
+    setRegion(nextRegion);
+    setData(null);
+    setError(null);
+    setLoading(true);
+    syncRegionUrl(nextRegion);
+  }
+
+  function load(refresh = false, activeRegion = region) {
+    const id = ++requestId.current;
     setError(null);
     const request = refresh ? setRefreshing : setLoading;
     request(true);
-    fetchEtfScreener({}, refresh)
+    fetchEtfScreener({ region: activeRegion }, refresh)
       .then((payload) => {
+        if (id !== requestId.current) return;
         setData(payload);
         if (refresh || payload.refresh_status === "running") {
-          void pollRefresh();
+          void pollRefresh(activeRegion, id);
         } else if (!payload.rows?.length) {
-          load(true);
+          load(true, activeRegion);
         }
       })
-      .catch((err: Error) => setError(err.message))
+      .catch((err: Error) => {
+        if (id !== requestId.current) return;
+        setError(err.message);
+      })
       .finally(() => {
+        if (id !== requestId.current) return;
         setLoading(false);
       });
   }
 
-  async function pollRefresh() {
+  async function pollRefresh(activeRegion = region, id = requestId.current) {
     setRefreshing(true);
     const deadline = Date.now() + 10 * 60_000;
     try {
       while (Date.now() < deadline) {
-        const status = await fetchEtfRefreshStatus();
+        if (id !== requestId.current) return;
+        const status = await fetchEtfRefreshStatus(activeRegion);
         if (status.refresh_status === "failed" || status.status === "failed") {
           setError(status.error || status.message || "The ETF universe refresh failed.");
           return;
         }
-        const snapshot = await fetchEtfScreener({}, false);
+        const snapshot = await fetchEtfScreener({ region: activeRegion }, false);
+        if (id !== requestId.current) return;
         setData(snapshot);
         if (status.refresh_status === "complete" || status.status === "complete") {
           setError(null);
@@ -97,18 +145,30 @@ export function EtfScreenerPage() {
         await new Promise((resolve) => window.setTimeout(resolve, 5000));
       }
     } catch (err) {
+      if (id !== requestId.current) return;
       setError(err instanceof Error ? err.message : "The ETF universe refresh failed.");
     } finally {
-      setRefreshing(false);
+      if (id === requestId.current) setRefreshing(false);
     }
   }
 
   useEffect(() => {
-    load(false);
-    fetchEtfUnderlyingSignals()
+    const urlRegion = searchParams.get("region");
+    if (!urlRegion) return;
+    const normalized = normalizeEtfRegion(urlRegion);
+    setRegion((current) => (current === normalized ? current : normalized));
+  }, [searchParams]);
+
+  useEffect(() => {
+    storeEtfRegion(region);
+    if (region !== DEFAULT_ETF_REGION && searchParams.get("region") !== region) {
+      syncRegionUrl(region);
+    }
+    load(false, region);
+    fetchEtfUnderlyingSignals(region)
       .then((payload) => setUnderlying(pickArray(payload.etfs)))
       .catch(() => setUnderlying([]));
-  }, []);
+  }, [region]);
 
   const rows = useMemo(() => {
     const maxExpenseValue = asNumber(maxExpense);
@@ -139,23 +199,46 @@ export function EtfScreenerPage() {
     event.preventDefault();
   }
 
-  if (loading) {
+  const regions = (data?.regions as EtfListingRegionPayload[] | undefined)?.length
+    ? (data?.regions as EtfListingRegionPayload[])
+    : ETF_LISTING_REGIONS;
+  const activeRegion = regions.find((item) => item.key === region) ?? regions[0];
+
+  if (loading && !data) {
     return <LoadingState title="ETF screener" message="Loading cached ETF universe" />;
   }
 
   return (
     <div className="space-y-6">
-      <SectionHeader title="ETF screener" badge={data?.universe_name ?? "ETF research"} />
+      <SectionHeader title="ETF screener" badge={data?.universe_name ?? activeRegion?.universe_name ?? "ETF research"} />
       <EtfTabs activeHref="/etf" />
       <TerminalPanel
         title="Universe"
         eyebrow={data?.note ?? "Research composite, not a forecast"}
         action={
-          <button type="button" className="button" onClick={() => load(true)} disabled={refreshing}>
+          <button type="button" className="button" onClick={() => load(true, region)} disabled={refreshing}>
             {refreshing ? "Refreshing" : "Refresh cache"}
           </button>
         }
       >
+        <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="ETF listing region">
+          {regions.map((item) => {
+            const selected = item.key === region;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                className={`button ${selected ? "button-primary" : ""}`}
+                onClick={() => selectRegion(normalizeEtfRegion(item.key))}
+              >
+                {item.short_label}
+              </button>
+            );
+          })}
+        </div>
+        {activeRegion?.description ? <p className="mb-3 text-sm text-[var(--muted)]">{activeRegion.description}</p> : null}
         <form className="mb-4 grid gap-3 md:grid-cols-3 xl:grid-cols-5" onSubmit={onFilter}>
           <label className="text-xs text-[var(--muted)]">
             Ticker / name
