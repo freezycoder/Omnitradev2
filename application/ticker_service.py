@@ -120,6 +120,12 @@ class TickerAnalysis:
     valuation_summary: str
 
 
+def _optional_market_cap(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
 def _build_valuation_summary(fundamentals: dict[str, Any]) -> str:
     trailing_pe = fundamentals.get("trailingPE")
     forward_pe = fundamentals.get("forwardPE")
@@ -528,6 +534,12 @@ def build_ticker_analysis(ticker: str, data_mode: str = DATA_MODE_AUTO) -> Ticke
             estimate_context=earnings_context,
             sec_bundle=sec_event_bundle,
             news_items=earnings_news_items,
+            market_history=benchmarks.market_history,
+            sector_history=benchmarks.sector_history,
+            market_symbol=benchmarks.market_symbol,
+            sector_symbol=benchmarks.sector_symbol,
+            sector=sector,
+            market_cap=_optional_market_cap(merged_fundamentals.get("marketCap")),
             warning=(
                 finnhub_message
                 if not earnings_history and finnhub_message

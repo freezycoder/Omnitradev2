@@ -141,6 +141,74 @@ def test_post_filing_reaction_does_not_use_prices_after_as_of_date():
     )
 
     assert view.post_filing_3d_return_pct == 2.0
+    ten_day = view.latest_horizon(10)
+    assert ten_day is not None
+    assert ten_day.complete is False
+    assert ten_day.sessions_observed == 2
+    sixty_day = view.latest_horizon(60)
+    assert sixty_day is not None
+    assert sixty_day.complete is False
+    assert view.applied_impact == 0
+
+
+def test_pead_shadow_logs_excess_without_changing_score():
+    dates = pd.bdate_range("2025-10-01", periods=200)
+    stock = [100.0 + index * 0.10 for index in range(len(dates))]
+    spy = [100.0 + index * 0.02 for index in range(len(dates))]
+    sector = [100.0 + index * 0.04 for index in range(len(dates))]
+    history = pd.DataFrame({"Close": stock}, index=dates)
+    market = pd.DataFrame({"Close": spy}, index=dates)
+    sector_history = pd.DataFrame({"Close": sector}, index=dates)
+    baseline = build_earnings_intelligence_view(
+        stock_history=history,
+        earnings_history=_history_rows([8.0, 6.0, 4.0, 3.0]),
+        estimate_context={"next_earnings_date": "2026-09-15"},
+        sec_bundle=_earnings_filing("2026-01-15"),
+        as_of_date=dates[-1].date(),
+    )
+    view = build_earnings_intelligence_view(
+        stock_history=history,
+        earnings_history=_history_rows([8.0, 6.0, 4.0, 3.0]),
+        estimate_context={"next_earnings_date": "2026-09-15"},
+        sec_bundle=_earnings_filing("2026-01-15"),
+        market_history=market,
+        sector_history=sector_history,
+        market_symbol="SPY",
+        sector_symbol="XLK",
+        sector="Technology",
+        market_cap=50_000_000_000,
+        as_of_date=dates[-1].date(),
+    )
+
+    assert view.applied_impact == 0
+    assert view.score == baseline.score
+    assert view.post_filing_3d_return_pct == baseline.post_filing_3d_return_pct
+    assert view.event_drift
+    sixty = view.latest_horizon(60)
+    assert sixty is not None
+    assert sixty.complete is True
+    assert sixty.market_excess_pct is not None
+    assert sixty.sector_excess_pct is not None
+    assert sixty.market_excess_pct > 0
+    latest = next(event for event in view.event_drift if event.event_date == "2026-01-15")
+    assert latest.period == "2025-12-31"
+    assert latest.size_bucket == "large"
+    assert latest.event_date_source == "sec_filing"
+
+
+def test_old_cache_without_pead_fields_still_loads():
+    original = build_unavailable_earnings_intelligence_view("fixture")
+    payload = original.to_dict()
+    payload.pop("event_drift")
+    payload.pop("latest_post_event_horizons")
+    payload.pop("pead_price_history_sessions")
+    payload["unexpected_legacy_key"] = "ignore-me"
+
+    restored = earnings_intelligence_view_from_dict(payload)
+
+    assert restored.status == "unavailable"
+    assert restored.applied_impact == 0
+    assert restored.event_drift == []
 
 
 def test_old_cache_falls_back_to_unavailable_view():

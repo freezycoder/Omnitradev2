@@ -1,11 +1,23 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, date, datetime
 from typing import Any, Sequence
 
 import pandas as pd
 
+from domain.scoring.pead_shadow import (
+    PRICE_STORE_MIN_SESSIONS,
+    EarningsEventShadow,
+    PostEventHorizonReturn,
+    build_event_shadows,
+    close_series,
+    earnings_event_shadow_from_dict,
+    horizon_return_pct,
+    latest_horizons,
+    post_event_horizon_from_dict,
+    session_count,
+)
 from providers.events.sec_edgar_client import SecEventBundle
 from providers.news.news_provider import NewsItem
 
@@ -51,6 +63,11 @@ class EarningsIntelligenceView:
     guidance_direction: int
     summary: str
     quarters: list[EarningsQuarter] = field(default_factory=list)
+    event_drift: list[EarningsEventShadow] = field(default_factory=list)
+    latest_post_event_horizons: list[PostEventHorizonReturn] = field(default_factory=list)
+    pead_price_history_sessions: int | None = None
+    pead_market_history_sessions: int | None = None
+    pead_sector_history_sessions: int | None = None
     evidence: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     as_of_date: str | None = None
@@ -58,6 +75,12 @@ class EarningsIntelligenceView:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    def latest_horizon(self, sessions: int) -> PostEventHorizonReturn | None:
+        for item in self.latest_post_event_horizons:
+            if item.sessions == sessions:
+                return item
+        return None
 
 
 def _clamp(value: float, lower: float, upper: float) -> float:
@@ -151,27 +174,13 @@ def _post_filing_return_pct(
     as_of: date,
     sessions: int = 3,
 ) -> float | None:
-    event_date = _parse_date(filing_date)
-    if event_date is None or history.empty or "Close" not in history.columns:
-        return None
-    close = pd.to_numeric(history["Close"], errors="coerce").dropna().sort_index()
-    if close.empty:
-        return None
-    normalized = close.copy()
-    normalized.index = pd.to_datetime(normalized.index).tz_localize(None)
-    before = normalized[normalized.index.date < event_date]
-    after = normalized[
-        (normalized.index.date >= event_date)
-        & (normalized.index.date <= as_of)
-    ]
-    if before.empty or after.empty:
-        return None
-    target_index = min(sessions - 1, len(after) - 1)
-    baseline = float(before.iloc[-1])
-    target = float(after.iloc[target_index])
-    if baseline <= 0:
-        return None
-    return (target / baseline - 1.0) * 100.0
+    value, _observed, _complete = horizon_return_pct(
+        close_series(history),
+        _parse_date(filing_date),
+        as_of=as_of,
+        sessions=sessions,
+    )
+    return value
 
 
 def _surprise_trend(quarters: Sequence[EarningsQuarter]) -> str:
@@ -226,6 +235,12 @@ def build_earnings_intelligence_view(
     news_items: Sequence[NewsItem] = (),
     as_of_date: date | None = None,
     warning: str | None = None,
+    market_history: pd.DataFrame | None = None,
+    sector_history: pd.DataFrame | None = None,
+    market_symbol: str = "SPY",
+    sector_symbol: str | None = None,
+    sector: str | None = None,
+    market_cap: float | None = None,
 ) -> EarningsIntelligenceView:
     context = estimate_context if isinstance(estimate_context, dict) else {}
     if as_of_date is None:
@@ -286,6 +301,22 @@ def build_earnings_intelligence_view(
         filing_date,
         as_of=as_of_date,
     )
+    event_drift = build_event_shadows(
+        quarters=quarters,
+        stock_history=stock_history,
+        market_history=market_history,
+        sector_history=sector_history,
+        sec_bundle=sec_bundle,
+        as_of=as_of_date,
+        sector=sector,
+        market_cap=market_cap,
+        market_symbol=market_symbol,
+        sector_symbol=sector_symbol,
+    )
+    latest_horizons_rows = latest_horizons(event_drift, filing_date)
+    price_history_sessions = session_count(stock_history)
+    market_history_sessions = session_count(market_history)
+    sector_history_sessions = session_count(sector_history)
     guidance_direction = int(
         _clamp(
             sum(
@@ -375,6 +406,14 @@ def build_earnings_intelligence_view(
         )
     if not quarters:
         warnings.append("Historical EPS surprise data is unavailable.")
+    if price_history_sessions < PRICE_STORE_MIN_SESSIONS:
+        warnings.append(
+            "Price history is thinner than 80 sessions, so 20/60-session PEAD windows may be incomplete."
+        )
+    if market_history_sessions < PRICE_STORE_MIN_SESSIONS:
+        warnings.append(
+            "SPY history is thinner than 80 sessions, so market-excess PEAD windows may be incomplete."
+        )
 
     if status == "strong":
         summary = "Earnings execution, estimates, and revisions are strongly supportive."
@@ -423,6 +462,11 @@ def build_earnings_intelligence_view(
         guidance_direction=guidance_direction,
         summary=summary,
         quarters=quarters,
+        event_drift=event_drift,
+        latest_post_event_horizons=latest_horizons_rows,
+        pead_price_history_sessions=price_history_sessions,
+        pead_market_history_sessions=market_history_sessions,
+        pead_sector_history_sessions=sector_history_sessions,
         evidence=evidence,
         warnings=list(dict.fromkeys(warnings)),
         as_of_date=as_of_date.isoformat(),
@@ -474,18 +518,48 @@ def earnings_intelligence_view_from_dict(
         )
     quarter_rows = payload.get("quarters")
     quarters = [
-        EarningsQuarter(**row)
+        quarter
         for row in quarter_rows or []
         if isinstance(row, dict)
+        for quarter in [_dataclass_from_dict(EarningsQuarter, row)]
+        if quarter is not None
+    ]
+    event_drift = [
+        event
+        for row in payload.get("event_drift") or []
+        if isinstance(row, dict)
+        for event in [earnings_event_shadow_from_dict(row)]
+        if event is not None
+    ]
+    latest_horizon_rows = [
+        horizon
+        for row in payload.get("latest_post_event_horizons") or []
+        if isinstance(row, dict)
+        for horizon in [post_event_horizon_from_dict(row)]
+        if horizon is not None
     ]
     values = dict(payload)
     values["quarters"] = quarters
-    return EarningsIntelligenceView(**values)
+    values["event_drift"] = event_drift
+    values["latest_post_event_horizons"] = latest_horizon_rows
+    return _dataclass_from_dict(EarningsIntelligenceView, values) or build_unavailable_earnings_intelligence_view(
+        "The cached snapshot predates earnings intelligence."
+    )
+
+
+def _dataclass_from_dict(cls: type[Any], payload: dict[str, Any] | None) -> Any | None:
+    if not isinstance(payload, dict):
+        return None
+    allowed = {item.name for item in fields(cls)}
+    values = {key: value for key, value in payload.items() if key in allowed}
+    return cls(**values)
 
 
 __all__ = [
+    "EarningsEventShadow",
     "EarningsIntelligenceView",
     "EarningsQuarter",
+    "PostEventHorizonReturn",
     "build_earnings_intelligence_view",
     "build_unavailable_earnings_intelligence_view",
     "earnings_intelligence_view_from_dict",
