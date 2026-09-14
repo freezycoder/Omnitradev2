@@ -16,11 +16,15 @@ from domain.research.lifecycle import (
     GateReceipt,
     IN_FLIGHT_EXPERIMENT_IDS,
     LifecycleLabel,
+    LifecycleStage,
+    QUALIFIED_PLUS_STAGES,
     REQUIRED_LIVE_GATES,
     ShadowCandidate,
     derive_lifecycle_label,
+    derive_lifecycle_stage,
     experiment_by_id,
     in_flight_experiments,
+    is_qualified_plus,
     receipts_from_shadow_calibration,
 )
 from domain.research.promotion import (
@@ -117,6 +121,7 @@ def test_in_flight_experiments_are_labeled_unverified_with_zero_live_impact() ->
     tagged = in_flight_experiments()
     assert {item.experiment_id for item in tagged} == set(IN_FLIGHT_EXPERIMENT_IDS)
     assert all(item.lifecycle_label is LifecycleLabel.UNVERIFIED for item in tagged)
+    assert all(item.lifecycle_stage is LifecycleStage.CANDIDATE for item in tagged)
     assert all(item.live_applied_impact == 0 for item in tagged)
     assert experiment_by_id(EXPERIMENT_FINRA_SHORT_VOL).implemented is False
 
@@ -125,6 +130,7 @@ def test_gate_checklist_covers_the_required_live_set() -> None:
     assert tuple(item["gate"] for item in GATE_CHECKLIST) == tuple(
         gate.value for gate in REQUIRED_LIVE_GATES
     )
+    assert QUALIFIED_PLUS_STAGES == {LifecycleStage.QUALIFIED, LifecycleStage.CHAMPION}
 
 
 def test_promote_without_receipts_fails_closed() -> None:
@@ -158,6 +164,8 @@ def test_complete_receipts_do_not_auto_promote() -> None:
     score, applied = apply_shadow_impact_to_score(70, 8, candidate)
     assert score == 70
     assert applied == 0
+    assert derive_lifecycle_stage(candidate) is LifecycleStage.QUALIFIED
+    assert is_qualified_plus(derive_lifecycle_stage(candidate)) is True
 
 
 def test_explicit_human_promote_can_pass_only_when_live_switch_is_on() -> None:
@@ -169,6 +177,10 @@ def test_explicit_human_promote_can_pass_only_when_live_switch_is_on() -> None:
     )
     assert promoted.human_authorized is True
     assert promoted.claimed_label is LifecycleLabel.REAL
+    assert derive_lifecycle_stage(
+        promoted,
+        live_promotion_enabled=True,
+    ) is LifecycleStage.CHAMPION
     score, applied = apply_shadow_impact_to_score(
         70,
         8,
@@ -244,15 +256,22 @@ def test_overlay_and_seal_keep_unverified_impact_at_zero() -> None:
     )
     scored, sealed = overlay_shadow_on_live_score(long_view, shadow)
     assert sealed.lifecycle_label == LifecycleLabel.UNVERIFIED.value
+    assert sealed.lifecycle_stage == LifecycleStage.CANDIDATE.value
     assert EXPERIMENT_FORM4 in sealed.experiment_ids
     assert sealed.modeled_impact == 8
     assert sealed.applied_impact == 0
     assert scored.score == long_view.score
 
-    spoofed = replace(shadow, applied_impact=9, lifecycle_label=LifecycleLabel.REAL.value)
+    spoofed = replace(
+        shadow,
+        applied_impact=9,
+        lifecycle_label=LifecycleLabel.REAL.value,
+        lifecycle_stage=LifecycleStage.CHAMPION.value,
+    )
     sealed_spoof = seal_shadow_live_fields(spoofed)
     assert sealed_spoof.applied_impact == 0
     assert sealed_spoof.lifecycle_label == LifecycleLabel.UNVERIFIED.value
+    assert sealed_spoof.lifecycle_stage == LifecycleStage.CANDIDATE.value
 
 
 def test_cache_rebuild_discards_spoofed_applied_impact() -> None:
@@ -265,6 +284,7 @@ def test_cache_rebuild_discards_spoofed_applied_impact() -> None:
     restored_rs = relative_strength_view_from_dict(rs_payload)
     assert restored_rs.applied_impact == 0
     assert restored_rs.lifecycle_label == LifecycleLabel.UNVERIFIED.value
+    assert restored_rs.lifecycle_stage == LifecycleStage.CANDIDATE.value
     assert restored_rs.experiment_ids == (EXPERIMENT_GROUP_RS,)
 
     ei_payload = build_unavailable_earnings_intelligence_view("fixture").to_dict()
@@ -288,11 +308,51 @@ def test_shadow_calibration_activation_does_not_issue_live_receipts() -> None:
     }
     receipts = receipts_from_shadow_calibration(payload)
     passed = {receipt.gate for receipt in receipts if receipt.passed}
+    failed = {receipt.gate for receipt in receipts if not receipt.passed}
     assert passed == {GateKind.OOS, GateKind.WALK_FORWARD}
+    assert failed == {GateKind.MULTIPLE_TESTING, GateKind.FORWARD_PAPER}
+    assert all(receipt.rejection_evidence for receipt in receipts if not receipt.passed)
     candidate = ShadowCandidate(experiment_id="alternative_signals", receipts=receipts)
     decision = evaluate_promotion(candidate)
     assert decision.allowed is False
     assert decision.live_write_allowed is False
+    assert decision.cannot_flip_live is True
+    assert decision.qualified_plus is False
+    assert decision.lifecycle_stage is LifecycleStage.OOS_VALIDATED
     assert decision.automatic_promotion is False
     assert GateKind.MULTIPLE_TESTING in decision.missing_gates
     assert GateKind.FORWARD_PAPER in decision.missing_gates
+    assert decision.rejection_evidence
+    assert any("multiple_testing" in item for item in decision.rejection_evidence)
+
+
+def test_stages_progress_and_illegal_promote_below_qualified_fails() -> None:
+    assert derive_lifecycle_stage(_candidate()) is LifecycleStage.CANDIDATE
+    oos_only = _candidate(receipts=(_receipt(GateKind.OOS),))
+    assert derive_lifecycle_stage(oos_only) is LifecycleStage.OOS_VALIDATED
+    paper = _candidate(receipts=(_receipt(GateKind.FORWARD_PAPER),))
+    assert derive_lifecycle_stage(paper) is LifecycleStage.FORWARD_PAPER
+    assert is_qualified_plus(derive_lifecycle_stage(paper)) is False
+    with pytest.raises(PromotionBlocked) as blocked:
+        promote_shadow_candidate_to_live(
+            paper,
+            human_authorized=True,
+            live_promotion_enabled=True,
+        )
+    assert "qualified+" in str(blocked.value).lower()
+    decision = evaluate_promotion(oos_only)
+    assert decision.rejection_evidence
+    assert decision.cannot_flip_live is True
+
+
+def test_readiness_cannot_flip_live_even_when_qualified() -> None:
+    candidate = _candidate(receipts=_complete_receipts())
+    decision = evaluate_promotion(candidate)
+    assert decision.lifecycle_stage is LifecycleStage.QUALIFIED
+    assert decision.qualified_plus is True
+    assert decision.live_write_allowed is False
+    assert decision.cannot_flip_live is True
+    assert decision.release_mode == "paper_shadow"
+    score, applied = apply_shadow_impact_to_score(70, 8, candidate)
+    assert score == 70
+    assert applied == 0

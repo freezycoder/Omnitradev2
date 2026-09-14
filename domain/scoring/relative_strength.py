@@ -6,7 +6,7 @@ from typing import Any
 
 import pandas as pd
 
-from domain.research.lifecycle import EXPERIMENT_GROUP_RS, LifecycleLabel
+from domain.research.lifecycle import EXPERIMENT_GROUP_RS, LifecycleLabel, LifecycleStage
 from domain.research.promotion import instantiate_sealed_shadow_view
 
 
@@ -47,6 +47,7 @@ class RelativeStrengthView:
     as_of_date: str | None = None
     updated_at: str | None = None
     lifecycle_label: str = LifecycleLabel.UNVERIFIED.value
+    lifecycle_stage: str = LifecycleStage.CANDIDATE.value
     experiment_ids: tuple[str, ...] = (EXPERIMENT_GROUP_RS,)
     promotion_receipts: tuple[dict[str, Any], ...] = ()
 
@@ -256,6 +257,7 @@ def build_relative_strength_view(
         as_of_date=as_of.date().isoformat(),
         updated_at=datetime.now(UTC).isoformat(),
         lifecycle_label=LifecycleLabel.UNVERIFIED.value,
+        lifecycle_stage=LifecycleStage.CANDIDATE.value,
         experiment_ids=(EXPERIMENT_GROUP_RS,),
     )
 
@@ -286,6 +288,7 @@ def build_unavailable_relative_strength_view(
         warnings=[message],
         updated_at=datetime.now(UTC).isoformat(),
         lifecycle_label=LifecycleLabel.UNVERIFIED.value,
+        lifecycle_stage=LifecycleStage.CANDIDATE.value,
         experiment_ids=(EXPERIMENT_GROUP_RS,),
     )
 

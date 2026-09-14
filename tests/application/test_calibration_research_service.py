@@ -126,6 +126,8 @@ def test_clustered_interval_is_deterministic_and_research_only(
     ] == _row(second, threshold=70, cost_bps=10)["confidence_interval_low_pct"]
     assert first["status"] == "research_only"
     assert first["lifecycle_label"] == "UNVERIFIED"
+    assert first["cannot_flip_live"] is True
+    assert first["deployment_guard"]["cannot_flip_live"] is True
     assert first["deployment_guard"]["automatic_config_changes"] is False
     assert first["deployment_guard"]["automatic_promotion"] is False
     assert first["deployment_guard"]["live_write_allowed"] is False

@@ -117,7 +117,9 @@ The combined overlay is capped at `±10` modeled points. It is research-only:
 
 - `modeled_impact` records what the overlay would have contributed.
 - `applied_impact` is always `0` until promotion receipts authorize a live write.
-- Lifecycle label is `UNVERIFIED` (or `DEMO` on demo data). Scanners never assign `REAL`.
+- Lifecycle label is `UNVERIFIED` (or `DEMO` on demo data). Stage starts at
+  `candidate`. Scanners never assign `REAL` or `champion`.
+- Live writers require Qualified+; this overlay is not Qualified.
 - Missing sources reduce coverage and are never interpreted as neutral evidence.
 - Signal snapshots retain the shadow score, component evidence, and coverage for outcome analysis.
 

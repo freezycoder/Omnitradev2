@@ -91,6 +91,7 @@ def test_strong_earnings_remains_shadow_only_and_flags_imminent_event():
     assert view.status == "strong"
     assert view.applied_impact == 0
     assert view.lifecycle_label == "UNVERIFIED"
+    assert view.lifecycle_stage == "candidate"
     assert "pead" in view.experiment_ids
     assert view.coverage_score == 100
     assert view.event_risk == "high"

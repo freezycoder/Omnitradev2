@@ -121,10 +121,14 @@ class CalibrationResearchService:
         return {
             "status": "research_only",
             "lifecycle_label": LifecycleLabel.UNVERIFIED.value,
+            "lifecycle_stage": promotion.lifecycle_stage.value,
+            "cannot_flip_live": True,
+            "release_mode": promotion.release_mode,
             "deployment_guard": {
                 "automatic_config_changes": False,
                 "automatic_promotion": False,
                 "live_write_allowed": False,
+                "cannot_flip_live": True,
                 "message": (
                     "Candidates are evidence for shadow testing only. "
                     "This analysis never writes production score thresholds "

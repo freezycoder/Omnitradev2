@@ -10,6 +10,7 @@ from domain.research.lifecycle import (
     EXPERIMENT_EARNINGS_INTELLIGENCE,
     EXPERIMENT_PEAD,
     LifecycleLabel,
+    LifecycleStage,
 )
 from domain.research.promotion import instantiate_sealed_shadow_view
 from providers.events.sec_edgar_client import SecEventBundle
@@ -62,6 +63,7 @@ class EarningsIntelligenceView:
     as_of_date: str | None = None
     updated_at: str | None = None
     lifecycle_label: str = LifecycleLabel.UNVERIFIED.value
+    lifecycle_stage: str = LifecycleStage.CANDIDATE.value
     experiment_ids: tuple[str, ...] = (
         EXPERIMENT_EARNINGS_INTELLIGENCE,
         EXPERIMENT_PEAD,
@@ -440,6 +442,7 @@ def build_earnings_intelligence_view(
         as_of_date=as_of_date.isoformat(),
         updated_at=datetime.now(UTC).isoformat(),
         lifecycle_label=LifecycleLabel.UNVERIFIED.value,
+        lifecycle_stage=LifecycleStage.CANDIDATE.value,
         experiment_ids=(EXPERIMENT_EARNINGS_INTELLIGENCE, EXPERIMENT_PEAD),
     )
 
@@ -477,6 +480,7 @@ def build_unavailable_earnings_intelligence_view(
         warnings=[message],
         updated_at=datetime.now(UTC).isoformat(),
         lifecycle_label=LifecycleLabel.UNVERIFIED.value,
+        lifecycle_stage=LifecycleStage.CANDIDATE.value,
         experiment_ids=(EXPERIMENT_EARNINGS_INTELLIGENCE, EXPERIMENT_PEAD),
     )
 

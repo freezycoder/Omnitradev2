@@ -79,6 +79,10 @@ def test_alternative_signal_calibration_stays_locked_below_evidence_gate():
     assert payload["lifecycle_label"] == "UNVERIFIED"
     assert payload["promotion"]["live_write_allowed"] is False
     assert payload["promotion"]["automatic_promotion"] is False
+    assert payload["cannot_flip_live"] is True
+    assert payload["promotion"]["cannot_flip_live"] is True
+    assert payload["promotion"]["qualified_plus"] is False
+    assert payload["lifecycle_stage"] == "in_sample"
     assert "multiple_testing" in payload["promotion"]["missing_gates"]
     assert "forward_paper" in payload["promotion"]["missing_gates"]
     assert payload["requirements"]["minimum_resolved_signals"]["passed"] is False

@@ -15,6 +15,17 @@ import { asNumber, formatPct, pickArray, pickRecord, sentenceCase } from "@/lib/
 
 type Row = Record<string, unknown>;
 
+const shadowReadiness = (analysis: Row) => {
+  const promotion = pickRecord(analysis.promotion);
+  const stage = String(promotion.lifecycle_stage || "candidate").replaceAll("_", " ");
+  const liveAllowed = promotion.live_write_allowed === true;
+  return {
+    value: sentenceCase(stage),
+    meta: liveAllowed ? "Live write allowed" : "Paper/shadow · cannot flip live",
+    tone: (liveAllowed ? "positive" : "warning") as "positive" | "warning"
+  };
+};
+
 const calibrationColumns = (labelKey: string): DataTableColumn<Row>[] => [
   { key: labelKey, header: "Bucket", render: (row) => <span className="font-semibold text-white">{String(row[labelKey] ?? "N/A")}</span> },
   { key: "resolved_signals", header: "Resolved", align: "right" },
@@ -132,6 +143,9 @@ export function CalibrationPage() {
     };
   });
   const positiveEarningsFolds = pickArray(earningsIntelligenceAnalysis.validation_folds).filter((row) => row.positive === true).length;
+  const alternativeReadiness = shadowReadiness(alternativeSignalAnalysis);
+  const relativeStrengthReadiness = shadowReadiness(relativeStrengthAnalysis);
+  const earningsReadiness = shadowReadiness(earningsIntelligenceAnalysis);
 
   const scoreChartRows = scoreBuckets.map((row) => ({
     bucket: String(row.score_bucket ?? "N/A"),
@@ -182,7 +196,7 @@ export function CalibrationPage() {
                 <MetricCard label="Directional Sample" value={String(alternativeSignalAnalysis.directional_resolved_signals ?? 0)} meta="Resolved non-neutral shadow signals" tone="info" />
                 <MetricCard label="Directional Net Exp." value={formatPct(alternativeSignalAnalysis.directional_net_expectancy_pct, 2)} meta="Impact-aligned after modeled costs" tone={(asNumber(alternativeSignalAnalysis.directional_net_expectancy_pct) ?? 0) > 0 ? "positive" : "warning"} />
                 <MetricCard label="Positive Folds" value={String(positiveValidationFolds)} meta="Chronological validation blocks" tone={positiveValidationFolds >= 2 ? "positive" : "warning"} />
-                <MetricCard label="Activation" value={alternativeSignalAnalysis.activation_ready ? "Review Ready" : "Locked"} meta="Never activates automatically" tone={alternativeSignalAnalysis.activation_ready ? "positive" : "warning"} />
+                <MetricCard label="Readiness" value={alternativeReadiness.value} meta={alternativeReadiness.meta} tone={alternativeReadiness.tone} />
               </div>
               <DiagnosticCard diagnostic={pickRecord(alternativeSignalAnalysis.diagnostic)} />
               <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
@@ -211,7 +225,7 @@ export function CalibrationPage() {
                 <MetricCard label="Directional Sample" value={String(relativeStrengthAnalysis.directional_resolved_signals ?? 0)} meta="Resolved non-neutral leadership signals" tone="info" />
                 <MetricCard label="Directional Net Exp." value={formatPct(relativeStrengthAnalysis.directional_net_expectancy_pct, 2)} meta="Leadership-aligned after modeled costs" tone={(asNumber(relativeStrengthAnalysis.directional_net_expectancy_pct) ?? 0) > 0 ? "positive" : "warning"} />
                 <MetricCard label="Positive Folds" value={String(positiveRelativeStrengthFolds)} meta="Chronological validation blocks" tone={positiveRelativeStrengthFolds >= 2 ? "positive" : "warning"} />
-                <MetricCard label="Activation" value={relativeStrengthAnalysis.activation_ready ? "Review Ready" : "Locked"} meta="Never activates automatically" tone={relativeStrengthAnalysis.activation_ready ? "positive" : "warning"} />
+                <MetricCard label="Readiness" value={relativeStrengthReadiness.value} meta={relativeStrengthReadiness.meta} tone={relativeStrengthReadiness.tone} />
               </div>
               <DiagnosticCard diagnostic={pickRecord(relativeStrengthAnalysis.diagnostic)} />
               <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
@@ -240,7 +254,7 @@ export function CalibrationPage() {
                 <MetricCard label="Directional Sample" value={String(earningsIntelligenceAnalysis.directional_resolved_signals ?? 0)} meta="Resolved non-neutral earnings signals" tone="info" />
                 <MetricCard label="Directional Net Exp." value={formatPct(earningsIntelligenceAnalysis.directional_net_expectancy_pct, 2)} meta="Earnings-aligned after modeled costs" tone={(asNumber(earningsIntelligenceAnalysis.directional_net_expectancy_pct) ?? 0) > 0 ? "positive" : "warning"} />
                 <MetricCard label="Positive Folds" value={String(positiveEarningsFolds)} meta="Chronological validation blocks" tone={positiveEarningsFolds >= 2 ? "positive" : "warning"} />
-                <MetricCard label="Activation" value={earningsIntelligenceAnalysis.activation_ready ? "Review Ready" : "Locked"} meta="Never activates automatically" tone={earningsIntelligenceAnalysis.activation_ready ? "positive" : "warning"} />
+                <MetricCard label="Readiness" value={earningsReadiness.value} meta={earningsReadiness.meta} tone={earningsReadiness.tone} />
               </div>
               <DiagnosticCard diagnostic={pickRecord(earningsIntelligenceAnalysis.diagnostic)} />
               <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">

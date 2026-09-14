@@ -4,14 +4,19 @@ from dataclasses import dataclass, fields, replace
 from typing import Any, Iterable, Sequence, TypeVar
 
 from domain.research.lifecycle import (
+    RELEASE_MODE_PAPER_SHADOW,
     GateKind,
     GateReceipt,
     LifecycleLabel,
+    LifecycleStage,
     ShadowCandidate,
     coerce_experiment_ids,
     coerce_receipts,
     derive_lifecycle_label,
+    derive_lifecycle_stage,
+    is_qualified_plus,
     parse_lifecycle_label,
+    parse_lifecycle_stage,
     receipt_dicts,
     receipts_from_shadow_calibration,
 )
@@ -37,21 +42,31 @@ class PromotionBlocked(RuntimeError):
 class PromotionDecision:
     allowed: bool
     lifecycle_label: LifecycleLabel
+    lifecycle_stage: LifecycleStage
     automatic_promotion: bool
     live_write_allowed: bool
+    cannot_flip_live: bool
+    qualified_plus: bool
     missing_gates: tuple[GateKind, ...]
     reasons: tuple[str, ...]
     receipts: tuple[GateReceipt, ...]
+    rejection_evidence: tuple[str, ...]
+    release_mode: str = RELEASE_MODE_PAPER_SHADOW
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "allowed": self.allowed,
             "lifecycle_label": self.lifecycle_label.value,
+            "lifecycle_stage": self.lifecycle_stage.value,
             "automatic_promotion": self.automatic_promotion,
             "live_write_allowed": self.live_write_allowed,
+            "cannot_flip_live": self.cannot_flip_live,
+            "qualified_plus": self.qualified_plus,
             "missing_gates": [gate.value for gate in self.missing_gates],
             "reasons": list(self.reasons),
             "receipts": [receipt.to_dict() for receipt in self.receipts],
+            "rejection_evidence": list(self.rejection_evidence),
+            "release_mode": self.release_mode,
         }
 
 
@@ -65,12 +80,22 @@ def evaluate_promotion(
     live_promotion_enabled: bool = LIVE_SHADOW_PROMOTION_ENABLED,
 ) -> PromotionDecision:
     missing = candidate.missing_gates
+    stage = derive_lifecycle_stage(
+        candidate,
+        live_promotion_enabled=live_promotion_enabled,
+    )
+    qualified_plus = is_qualified_plus(stage)
     reasons: list[str] = []
     if missing:
         reasons.append(
             "Missing required gate receipts: "
             + ", ".join(gate.value for gate in missing)
             + "."
+        )
+    if not qualified_plus:
+        reasons.append(
+            "Live recommendation writers require Qualified+ "
+            f"(got {stage.value})."
         )
     if not candidate.human_authorized:
         reasons.append("Human authorization is required; automatic promotion is forbidden.")
@@ -82,14 +107,21 @@ def evaluate_promotion(
         candidate,
         live_promotion_enabled=live_promotion_enabled,
     )
+    rejection = candidate.rejection_evidence() + tuple(
+        reason for reason in reasons if reason not in candidate.rejection_evidence()
+    )
     return PromotionDecision(
         allowed=allowed,
         lifecycle_label=lifecycle_label,
+        lifecycle_stage=stage,
         automatic_promotion=False,
         live_write_allowed=allowed,
+        cannot_flip_live=not live_promotion_enabled,
+        qualified_plus=qualified_plus,
         missing_gates=missing,
         reasons=tuple(reasons),
         receipts=candidate.receipts,
+        rejection_evidence=rejection,
     )
 
 
@@ -160,6 +192,10 @@ def overlay_shadow_on_live_score(
             candidate,
             live_promotion_enabled=live_promotion_enabled,
         ).value,
+        lifecycle_stage=derive_lifecycle_stage(
+            candidate,
+            live_promotion_enabled=live_promotion_enabled,
+        ).value,
     )
     if applied == 0 or new_score == base_score:
         return view, sealed_shadow
@@ -198,9 +234,10 @@ def assert_live_recommendation_write_allowed(
 ) -> None:
     """Choke point for paths that write live recommendation labels.
 
-    Unverified candidates with ``applied_impact == 0`` are allowed through
-    (no live behavior change). Any non-zero applied impact must pass every
-    promotion gate; otherwise the write fails closed.
+    Unverified or below-Qualified candidates with ``applied_impact == 0``
+    are allowed through (no live behavior change). Any non-zero applied
+    impact requires Qualified+ plus full live authorization; otherwise
+    the write fails closed.
     """
 
     for view in shadow_views:
@@ -275,6 +312,10 @@ def seal_shadow_live_fields(
             candidate,
             live_promotion_enabled=live_promotion_enabled,
         ).value,
+        "lifecycle_stage": derive_lifecycle_stage(
+            candidate,
+            live_promotion_enabled=live_promotion_enabled,
+        ).value,
     }
     if hasattr(view, "experiment_ids") and candidate.experiment_ids:
         updates["experiment_ids"] = candidate.experiment_ids
@@ -301,6 +342,9 @@ def instantiate_sealed_shadow_view(
     prepared["lifecycle_label"] = parse_lifecycle_label(
         prepared.get("lifecycle_label")
     ).value
+    prepared["lifecycle_stage"] = parse_lifecycle_stage(
+        prepared.get("lifecycle_stage")
+    ).value
     allowed = {item.name for item in fields(view_cls)}
     view = view_cls(**{key: value for key, value in prepared.items() if key in allowed})
     return seal_shadow_live_fields(
@@ -320,8 +364,11 @@ def annotate_calibration_payload(
     decision = evaluate_promotion(candidate)
     annotated = dict(payload)
     annotated["lifecycle_label"] = decision.lifecycle_label.value
+    annotated["lifecycle_stage"] = decision.lifecycle_stage.value
     annotated["promotion"] = decision.to_dict()
     annotated["automatic_activation"] = False
+    annotated["cannot_flip_live"] = True
+    annotated["release_mode"] = RELEASE_MODE_PAPER_SHADOW
     return annotated
 
 

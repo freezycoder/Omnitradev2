@@ -68,6 +68,7 @@ def test_alternative_signal_is_capped_and_never_applied_live():
 
     assert view.mode == "shadow"
     assert view.lifecycle_label == "UNVERIFIED"
+    assert view.lifecycle_stage == "candidate"
     assert "form4" in view.experiment_ids
     assert view.modeled_impact == 10
     assert view.applied_impact == 0

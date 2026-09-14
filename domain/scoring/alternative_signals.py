@@ -9,6 +9,7 @@ from domain.research.lifecycle import (
     EXPERIMENT_ALTERNATIVE_SIGNALS,
     EXPERIMENT_FORM4,
     LifecycleLabel,
+    LifecycleStage,
 )
 from providers.events.sec_edgar_client import SecEventBundle
 from providers.macro.fred_client import FredMacroBundle, FredSeriesSnapshot
@@ -45,6 +46,7 @@ class AlternativeSignalView:
     activation_gate: dict[str, Any] = field(default_factory=dict)
     updated_at: str | None = None
     lifecycle_label: str = LifecycleLabel.UNVERIFIED.value
+    lifecycle_stage: str = LifecycleStage.CANDIDATE.value
     experiment_ids: tuple[str, ...] = (
         EXPERIMENT_ALTERNATIVE_SIGNALS,
         EXPERIMENT_FORM4,
@@ -352,6 +354,7 @@ def build_alternative_signal_view(
         },
         updated_at=datetime.now(UTC).isoformat(),
         lifecycle_label=LifecycleLabel.UNVERIFIED.value,
+        lifecycle_stage=LifecycleStage.CANDIDATE.value,
         experiment_ids=(EXPERIMENT_ALTERNATIVE_SIGNALS, EXPERIMENT_FORM4),
     )
 
@@ -378,6 +381,7 @@ def build_unavailable_alternative_signal_view(message: str) -> AlternativeSignal
         },
         updated_at=datetime.now(UTC).isoformat(),
         lifecycle_label=LifecycleLabel.UNVERIFIED.value,
+        lifecycle_stage=LifecycleStage.CANDIDATE.value,
         experiment_ids=(EXPERIMENT_ALTERNATIVE_SIGNALS, EXPERIMENT_FORM4),
     )
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Mapping, Sequence, assert_never
@@ -10,15 +10,32 @@ class LifecycleLabel(str, Enum):
     """Provenance labels for shadow candidates and recommendation surfaces.
 
     REAL is never assigned by scanners. It can exist only after every live
-    promotion gate has a passing receipt and an explicit human authorization
-    that is still blocked by the hard-coded no-auto-promote switch.
+    promotion gate has a passing receipt, the candidate is Qualified+, and
+    an explicit human authorization that is still blocked by the hard-coded
+    no-auto-promote switch.
     """
 
     REAL = "REAL"
     PAPER = "PAPER"
+    DEMO = "DEMO"
     STALE = "STALE"
     UNVERIFIED = "UNVERIFIED"
-    DEMO = "DEMO"
+
+
+class LifecycleStage(str, Enum):
+    """OmniTrade research stages, adapted from the Candidate→Retired pattern.
+
+    Names are local. This is process plumbing, not a copied claim set.
+    Champion is unreachable while live promotion stays disabled.
+    """
+
+    CANDIDATE = "candidate"
+    IN_SAMPLE = "in_sample"
+    OOS_VALIDATED = "oos_validated"
+    FORWARD_PAPER = "forward_paper"
+    QUALIFIED = "qualified"
+    CHAMPION = "champion"
+    RETIRED = "retired"
 
 
 class GateKind(str, Enum):
@@ -36,6 +53,11 @@ REQUIRED_LIVE_GATES: tuple[GateKind, ...] = (
 )
 
 FORBIDDEN_AUTO_PROMOTE = True
+RELEASE_MODE_PAPER_SHADOW = "paper_shadow"
+
+QUALIFIED_PLUS_STAGES: frozenset[LifecycleStage] = frozenset(
+    {LifecycleStage.QUALIFIED, LifecycleStage.CHAMPION}
+)
 
 GATE_CHECKLIST: tuple[dict[str, str], ...] = (
     {
@@ -81,6 +103,7 @@ class GateReceipt:
     passed: bool
     evidence: str
     recorded_at: str | None = None
+    rejection_evidence: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -88,6 +111,7 @@ class GateReceipt:
             "passed": self.passed,
             "evidence": self.evidence,
             "recorded_at": self.recorded_at,
+            "rejection_evidence": self.rejection_evidence,
         }
 
     @classmethod
@@ -99,11 +123,16 @@ class GateReceipt:
             gate = GateKind(gate_value)
         except ValueError as exc:
             raise ValueError(f"Unknown promotion gate: {gate_value!r}") from exc
+        passed = bool(payload.get("passed"))
+        evidence = str(payload.get("evidence") or "")
+        rejection = payload.get("rejection_evidence")
+        rejection_evidence = None if passed else str(rejection or evidence or "") or None
         return cls(
             gate=gate,
-            passed=bool(payload.get("passed")),
-            evidence=str(payload.get("evidence") or ""),
+            passed=passed,
+            evidence=evidence,
             recorded_at=str(payload["recorded_at"]) if payload.get("recorded_at") else None,
+            rejection_evidence=rejection_evidence,
         )
 
 
@@ -131,6 +160,20 @@ class ShadowCandidate:
     def has_all_required_receipts(self) -> bool:
         return not self.missing_gates
 
+    def rejection_evidence(self) -> tuple[str, ...]:
+        items: list[str] = []
+        for receipt in self.receipts:
+            if receipt.passed:
+                continue
+            text = receipt.rejection_evidence or receipt.evidence
+            if text:
+                items.append(f"{receipt.gate.value}: {text}")
+        for gate in self.missing_gates:
+            if any(receipt.gate is gate for receipt in self.receipts):
+                continue
+            items.append(f"{gate.value}: No receipt recorded.")
+        return tuple(items)
+
 
 @dataclass(frozen=True)
 class ShadowExperiment:
@@ -139,6 +182,7 @@ class ShadowExperiment:
     plumbing: str
     implemented: bool
     lifecycle_label: LifecycleLabel = LifecycleLabel.UNVERIFIED
+    lifecycle_stage: LifecycleStage = LifecycleStage.CANDIDATE
     live_applied_impact: int = 0
     notes: str = ""
 
@@ -149,9 +193,11 @@ class ShadowExperiment:
             "plumbing": self.plumbing,
             "implemented": self.implemented,
             "lifecycle_label": self.lifecycle_label.value,
+            "lifecycle_stage": self.lifecycle_stage.value,
             "live_applied_impact": self.live_applied_impact,
             "notes": self.notes,
             "automatic_promotion": False,
+            "release_mode": RELEASE_MODE_PAPER_SHADOW,
         }
 
 
@@ -235,9 +281,9 @@ def parse_lifecycle_label(value: Any) -> LifecycleLabel:
             case (
                 LifecycleLabel.REAL
                 | LifecycleLabel.PAPER
+                | LifecycleLabel.DEMO
                 | LifecycleLabel.STALE
                 | LifecycleLabel.UNVERIFIED
-                | LifecycleLabel.DEMO
             ):
                 return value
             case _:
@@ -251,13 +297,64 @@ def parse_lifecycle_label(value: Any) -> LifecycleLabel:
         case (
             LifecycleLabel.REAL
             | LifecycleLabel.PAPER
+            | LifecycleLabel.DEMO
             | LifecycleLabel.STALE
             | LifecycleLabel.UNVERIFIED
-            | LifecycleLabel.DEMO
         ):
             return label
         case _:
             assert_never(label)
+
+
+def parse_lifecycle_stage(value: Any) -> LifecycleStage:
+    if isinstance(value, LifecycleStage):
+        match value:
+            case (
+                LifecycleStage.CANDIDATE
+                | LifecycleStage.IN_SAMPLE
+                | LifecycleStage.OOS_VALIDATED
+                | LifecycleStage.FORWARD_PAPER
+                | LifecycleStage.QUALIFIED
+                | LifecycleStage.CHAMPION
+                | LifecycleStage.RETIRED
+            ):
+                return value
+            case _:
+                assert_never(value)
+    raw = str(value or LifecycleStage.CANDIDATE.value).strip().lower()
+    try:
+        stage = LifecycleStage(raw)
+    except ValueError:
+        return LifecycleStage.CANDIDATE
+    match stage:
+        case (
+            LifecycleStage.CANDIDATE
+            | LifecycleStage.IN_SAMPLE
+            | LifecycleStage.OOS_VALIDATED
+            | LifecycleStage.FORWARD_PAPER
+            | LifecycleStage.QUALIFIED
+            | LifecycleStage.CHAMPION
+            | LifecycleStage.RETIRED
+        ):
+            return stage
+        case _:
+            assert_never(stage)
+
+
+def is_qualified_plus(stage: LifecycleStage) -> bool:
+    match stage:
+        case LifecycleStage.QUALIFIED | LifecycleStage.CHAMPION:
+            return True
+        case (
+            LifecycleStage.CANDIDATE
+            | LifecycleStage.IN_SAMPLE
+            | LifecycleStage.OOS_VALIDATED
+            | LifecycleStage.FORWARD_PAPER
+            | LifecycleStage.RETIRED
+        ):
+            return False
+        case _:
+            assert_never(stage)
 
 
 def derive_lifecycle_label(
@@ -271,15 +368,47 @@ def derive_lifecycle_label(
         return LifecycleLabel.DEMO
     if candidate.stale or source in {"unavailable", "stale"}:
         return LifecycleLabel.STALE
-    if (
-        candidate.has_all_required_receipts()
-        and candidate.human_authorized
-        and live_promotion_enabled
-    ):
-        return LifecycleLabel.REAL
-    if GateKind.FORWARD_PAPER in candidate.passed_gates:
-        return LifecycleLabel.PAPER
-    return LifecycleLabel.UNVERIFIED
+    stage = derive_lifecycle_stage(
+        candidate,
+        live_promotion_enabled=live_promotion_enabled,
+    )
+    match stage:
+        case LifecycleStage.CHAMPION:
+            return LifecycleLabel.REAL
+        case LifecycleStage.FORWARD_PAPER | LifecycleStage.QUALIFIED:
+            return LifecycleLabel.PAPER
+        case LifecycleStage.RETIRED:
+            return LifecycleLabel.STALE
+        case (
+            LifecycleStage.CANDIDATE
+            | LifecycleStage.IN_SAMPLE
+            | LifecycleStage.OOS_VALIDATED
+        ):
+            return LifecycleLabel.UNVERIFIED
+        case _:
+            assert_never(stage)
+
+
+def derive_lifecycle_stage(
+    candidate: ShadowCandidate,
+    *,
+    live_promotion_enabled: bool = False,
+) -> LifecycleStage:
+    source = (candidate.data_source or "").strip().lower()
+    if candidate.stale or source in {"unavailable", "stale"}:
+        return LifecycleStage.RETIRED
+    if candidate.has_all_required_receipts():
+        if candidate.human_authorized and live_promotion_enabled:
+            return LifecycleStage.CHAMPION
+        return LifecycleStage.QUALIFIED
+    passed = candidate.passed_gates
+    if GateKind.FORWARD_PAPER in passed:
+        return LifecycleStage.FORWARD_PAPER
+    if GateKind.OOS in passed:
+        return LifecycleStage.OOS_VALIDATED
+    if candidate.receipts:
+        return LifecycleStage.IN_SAMPLE
+    return LifecycleStage.CANDIDATE
 
 
 def _requirement_passed(payload: Mapping[str, Any], key: str) -> bool:
@@ -296,7 +425,8 @@ def receipts_from_shadow_calibration(payload: Mapping[str, Any]) -> tuple[GateRe
     """Map existing shadow calibration payloads onto OOS / walk-forward receipts.
 
     Multiple-testing and forward-paper receipts are never inferred from
-    activation_ready. Passing today's evidence gates is not a live-promotion receipt.
+    activation_ready. Failed gates are stored as rejection evidence.
+    Passing today's evidence gates is not a live-promotion receipt.
     """
 
     recorded_at = datetime.now(UTC).isoformat()
@@ -310,29 +440,54 @@ def receipts_from_shadow_calibration(payload: Mapping[str, Any]) -> tuple[GateRe
         )
     )
     walk_forward_passed = _requirement_passed(payload, "positive_validation_folds")
-    receipts = [
+    oos_evidence = (
+        "Calibration OOS cohort met resolved-signal, date, expectancy, and coverage floors."
+        if oos_passed
+        else "Calibration OOS cohort has not met the evidence floors."
+    )
+    walk_forward_evidence = (
+        "Calibration recorded at least two positive chronological validation folds."
+        if walk_forward_passed
+        else "Walk-forward folds have not met the positive-fold requirement."
+    )
+    multiple_testing_evidence = (
+        "Multiple-testing control was not pre-registered. "
+        "activation_ready and in-sample screens are not a substitute."
+    )
+    forward_paper_evidence = (
+        "No forward-paper period receipt. Historical OOS is not a substitute "
+        "for labeled PAPER live-forward tracking."
+    )
+    return (
         GateReceipt(
             gate=GateKind.OOS,
             passed=oos_passed,
-            evidence=(
-                "Calibration OOS cohort met resolved-signal, date, expectancy, and coverage floors."
-                if oos_passed
-                else "Calibration OOS cohort has not met the evidence floors."
-            ),
+            evidence=oos_evidence,
             recorded_at=recorded_at,
+            rejection_evidence=None if oos_passed else oos_evidence,
         ),
         GateReceipt(
             gate=GateKind.WALK_FORWARD,
             passed=walk_forward_passed,
-            evidence=(
-                "Calibration recorded at least two positive chronological validation folds."
-                if walk_forward_passed
-                else "Walk-forward folds have not met the positive-fold requirement."
-            ),
+            evidence=walk_forward_evidence,
             recorded_at=recorded_at,
+            rejection_evidence=None if walk_forward_passed else walk_forward_evidence,
         ),
-    ]
-    return tuple(receipts)
+        GateReceipt(
+            gate=GateKind.MULTIPLE_TESTING,
+            passed=False,
+            evidence=multiple_testing_evidence,
+            recorded_at=recorded_at,
+            rejection_evidence=multiple_testing_evidence,
+        ),
+        GateReceipt(
+            gate=GateKind.FORWARD_PAPER,
+            passed=False,
+            evidence=forward_paper_evidence,
+            recorded_at=recorded_at,
+            rejection_evidence=forward_paper_evidence,
+        ),
+    )
 
 
 def default_experiment_ids(*experiment_ids: str) -> tuple[str, ...]:
@@ -342,6 +497,7 @@ def default_experiment_ids(*experiment_ids: str) -> tuple[str, ...]:
 def default_shadow_state(*experiment_ids: str) -> dict[str, Any]:
     return {
         "lifecycle_label": LifecycleLabel.UNVERIFIED.value,
+        "lifecycle_stage": LifecycleStage.CANDIDATE.value,
         "experiment_ids": default_experiment_ids(*experiment_ids),
         "promotion_receipts": (),
     }
@@ -383,6 +539,9 @@ __all__ = [
     "GateReceipt",
     "IN_FLIGHT_EXPERIMENT_IDS",
     "LifecycleLabel",
+    "LifecycleStage",
+    "QUALIFIED_PLUS_STAGES",
+    "RELEASE_MODE_PAPER_SHADOW",
     "REQUIRED_LIVE_GATES",
     "ShadowCandidate",
     "ShadowExperiment",
@@ -391,9 +550,12 @@ __all__ = [
     "default_experiment_ids",
     "default_shadow_state",
     "derive_lifecycle_label",
+    "derive_lifecycle_stage",
     "experiment_by_id",
     "in_flight_experiments",
+    "is_qualified_plus",
     "parse_lifecycle_label",
+    "parse_lifecycle_stage",
     "receipt_dicts",
     "receipts_from_shadow_calibration",
 ]
