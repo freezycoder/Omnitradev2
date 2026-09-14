@@ -5,6 +5,11 @@ from datetime import UTC, datetime
 from typing import Any
 
 from config.settings import ALTERNATIVE_SIGNALS_MAX_IMPACT, ALTERNATIVE_SIGNALS_MODE
+from domain.research.lifecycle import (
+    EXPERIMENT_ALTERNATIVE_SIGNALS,
+    EXPERIMENT_FORM4,
+    LifecycleLabel,
+)
 from providers.events.sec_edgar_client import SecEventBundle
 from providers.macro.fred_client import FredMacroBundle, FredSeriesSnapshot
 from providers.news.news_provider import NewsItem
@@ -39,6 +44,12 @@ class AlternativeSignalView:
     warnings: list[str] = field(default_factory=list)
     activation_gate: dict[str, Any] = field(default_factory=dict)
     updated_at: str | None = None
+    lifecycle_label: str = LifecycleLabel.UNVERIFIED.value
+    experiment_ids: tuple[str, ...] = (
+        EXPERIMENT_ALTERNATIVE_SIGNALS,
+        EXPERIMENT_FORM4,
+    )
+    promotion_receipts: tuple[dict[str, Any], ...] = ()
 
 
 def _clamp(value: int, lower: int, upper: int) -> int:
@@ -337,8 +348,11 @@ def build_alternative_signal_view(
             "required_positive_validation_folds": 2,
             "requires_positive_net_expectancy": True,
             "automatic_activation": False,
+            "lifecycle_label": LifecycleLabel.UNVERIFIED.value,
         },
         updated_at=datetime.now(UTC).isoformat(),
+        lifecycle_label=LifecycleLabel.UNVERIFIED.value,
+        experiment_ids=(EXPERIMENT_ALTERNATIVE_SIGNALS, EXPERIMENT_FORM4),
     )
 
 
@@ -360,8 +374,11 @@ def build_unavailable_alternative_signal_view(message: str) -> AlternativeSignal
             "required_positive_validation_folds": 2,
             "requires_positive_net_expectancy": True,
             "automatic_activation": False,
+            "lifecycle_label": LifecycleLabel.UNVERIFIED.value,
         },
         updated_at=datetime.now(UTC).isoformat(),
+        lifecycle_label=LifecycleLabel.UNVERIFIED.value,
+        experiment_ids=(EXPERIMENT_ALTERNATIVE_SIGNALS, EXPERIMENT_FORM4),
     )
 
 

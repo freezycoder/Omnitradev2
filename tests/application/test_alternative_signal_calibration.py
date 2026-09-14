@@ -76,6 +76,11 @@ def test_alternative_signal_calibration_stays_locked_below_evidence_gate():
 
     assert payload["mode"] == "shadow"
     assert payload["activation_ready"] is False
+    assert payload["lifecycle_label"] == "UNVERIFIED"
+    assert payload["promotion"]["live_write_allowed"] is False
+    assert payload["promotion"]["automatic_promotion"] is False
+    assert "multiple_testing" in payload["promotion"]["missing_gates"]
+    assert "forward_paper" in payload["promotion"]["missing_gates"]
     assert payload["requirements"]["minimum_resolved_signals"]["passed"] is False
     assert payload["directional_net_expectancy_pct"] > 0
 
@@ -110,6 +115,8 @@ def test_relative_strength_calibration_rewards_aligned_leaders_and_laggards():
     assert payload["directional_resolved_signals"] == 60
     assert payload["directional_net_expectancy_pct"] > 0
     assert payload["requirements"]["minimum_resolved_signals"]["passed"] is True
+    assert payload["promotion"]["live_write_allowed"] is False
+    assert payload["automatic_activation"] is False
     assert {row["relative_strength_band"] for row in payload["cohorts"]} == {"Leader", "Laggard"}
 
 
@@ -131,6 +138,8 @@ def test_earnings_intelligence_calibration_rewards_aligned_score_bands():
     assert payload["directional_resolved_signals"] == 60
     assert payload["directional_net_expectancy_pct"] > 0
     assert payload["requirements"]["minimum_resolved_signals"]["passed"] is True
+    assert payload["promotion"]["live_write_allowed"] is False
+    assert payload["automatic_activation"] is False
     assert {
         row["earnings_intelligence_band"]
         for row in payload["cohorts"]

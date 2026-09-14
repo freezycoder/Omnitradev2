@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from domain.backtest.thresholds import DEFAULT_SCANNER_THRESHOLDS
+from domain.research.promotion import assert_live_recommendation_write_allowed
 from domain.scoring.accounting_quality import AccountingQualityView
 from domain.scoring.long_term import LongTermView
 from domain.scoring.short_term import ShortTermView
-from domain.backtest.thresholds import DEFAULT_SCANNER_THRESHOLDS
 
 
 @dataclass(frozen=True)
@@ -191,4 +192,25 @@ def build_short_term_recommendation(
         invalidation_note=view.invalidation_note,
         news_effect=view.news_summary,
         accounting_warning=accounting_view.warning_flag if accounting_view is not None else "",
+    )
+
+
+def write_live_recommendations(
+    long_term_view: LongTermView,
+    short_term_view: ShortTermView,
+    accounting_view: AccountingQualityView | None = None,
+    *,
+    shadow_views: tuple[object, ...] = (),
+) -> tuple[LongTermRecommendation, ShortTermRecommendation]:
+    """Stock live-recommendation write path.
+
+    Shadow overlays may only change live labels after promotion receipts
+    authorize a non-zero ``applied_impact``. Unverified candidates with
+    applied impact 0 pass through unchanged.
+    """
+
+    assert_live_recommendation_write_allowed(shadow_views)
+    return (
+        build_long_term_recommendation(long_term_view, accounting_view),
+        build_short_term_recommendation(short_term_view, accounting_view),
     )

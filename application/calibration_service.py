@@ -6,6 +6,12 @@ from typing import Any
 
 from application.calibration_research_service import CalibrationResearchService
 from application.performance_lab_service import PerformanceLabService
+from domain.research.lifecycle import (
+    EXPERIMENT_ALTERNATIVE_SIGNALS,
+    EXPERIMENT_EARNINGS_INTELLIGENCE,
+    EXPERIMENT_GROUP_RS,
+)
+from domain.research.promotion import annotate_calibration_payload
 from config.performance import (
     COMMISSION_PER_TRADE,
     COST_FILTER_ENABLED,
@@ -460,26 +466,29 @@ class CalibrationService:
                 "Positive shadow impacts should outperform neutral cohorts, while negative impacts should identify weaker forward returns."
             ),
         }
-        return {
-            "mode": "shadow",
-            "automatic_activation": False,
-            "activation_ready": activation_ready,
-            "directional_resolved_signals": len(directional_rows),
-            "directional_gross_expectancy_pct": (
-                round(gross_directional_expectancy, 2)
-                if gross_directional_expectancy is not None
-                else None
-            ),
-            "directional_net_expectancy_pct": (
-                round(net_directional_expectancy, 2)
-                if net_directional_expectancy is not None
-                else None
-            ),
-            "requirements": requirements,
-            "validation_folds": fold_rows,
-            "cohorts": cohorts,
-            "diagnostic": diagnostic,
-        }
+        return annotate_calibration_payload(
+            {
+                "mode": "shadow",
+                "automatic_activation": False,
+                "activation_ready": activation_ready,
+                "directional_resolved_signals": len(directional_rows),
+                "directional_gross_expectancy_pct": (
+                    round(gross_directional_expectancy, 2)
+                    if gross_directional_expectancy is not None
+                    else None
+                ),
+                "directional_net_expectancy_pct": (
+                    round(net_directional_expectancy, 2)
+                    if net_directional_expectancy is not None
+                    else None
+                ),
+                "requirements": requirements,
+                "validation_folds": fold_rows,
+                "cohorts": cohorts,
+                "diagnostic": diagnostic,
+            },
+            experiment_id=EXPERIMENT_ALTERNATIVE_SIGNALS,
+        )
 
     def get_relative_strength_analysis(self) -> dict[str, Any]:
         rows = self._outcome_repository.list_calibration_observations()
@@ -651,26 +660,29 @@ class CalibrationService:
                 "Leaders and outperformers should produce stronger forward returns than neutral, underperforming, and lagging cohorts."
             ),
         }
-        return {
-            "mode": "shadow",
-            "automatic_activation": False,
-            "activation_ready": activation_ready,
-            "directional_resolved_signals": len(directional_rows),
-            "directional_gross_expectancy_pct": (
-                round(gross_directional_expectancy, 2)
-                if gross_directional_expectancy is not None
-                else None
-            ),
-            "directional_net_expectancy_pct": (
-                round(net_directional_expectancy, 2)
-                if net_directional_expectancy is not None
-                else None
-            ),
-            "requirements": requirements,
-            "validation_folds": fold_rows,
-            "cohorts": cohorts,
-            "diagnostic": diagnostic,
-        }
+        return annotate_calibration_payload(
+            {
+                "mode": "shadow",
+                "automatic_activation": False,
+                "activation_ready": activation_ready,
+                "directional_resolved_signals": len(directional_rows),
+                "directional_gross_expectancy_pct": (
+                    round(gross_directional_expectancy, 2)
+                    if gross_directional_expectancy is not None
+                    else None
+                ),
+                "directional_net_expectancy_pct": (
+                    round(net_directional_expectancy, 2)
+                    if net_directional_expectancy is not None
+                    else None
+                ),
+                "requirements": requirements,
+                "validation_folds": fold_rows,
+                "cohorts": cohorts,
+                "diagnostic": diagnostic,
+            },
+            experiment_id=EXPERIMENT_GROUP_RS,
+        )
 
     def get_earnings_intelligence_analysis(self) -> dict[str, Any]:
         rows = self._outcome_repository.list_calibration_observations()
@@ -911,26 +923,29 @@ class CalibrationService:
                 "Strong and constructive earnings cohorts should outperform mixed, cautious, and deteriorating cohorts after costs."
             ),
         }
-        return {
-            "mode": "shadow",
-            "automatic_activation": False,
-            "activation_ready": activation_ready,
-            "directional_resolved_signals": len(directional_rows),
-            "directional_gross_expectancy_pct": (
-                round(gross_directional_expectancy, 2)
-                if gross_directional_expectancy is not None
-                else None
-            ),
-            "directional_net_expectancy_pct": (
-                round(net_directional_expectancy, 2)
-                if net_directional_expectancy is not None
-                else None
-            ),
-            "requirements": requirements,
-            "validation_folds": fold_rows,
-            "cohorts": cohorts,
-            "diagnostic": diagnostic,
-        }
+        return annotate_calibration_payload(
+            {
+                "mode": "shadow",
+                "automatic_activation": False,
+                "activation_ready": activation_ready,
+                "directional_resolved_signals": len(directional_rows),
+                "directional_gross_expectancy_pct": (
+                    round(gross_directional_expectancy, 2)
+                    if gross_directional_expectancy is not None
+                    else None
+                ),
+                "directional_net_expectancy_pct": (
+                    round(net_directional_expectancy, 2)
+                    if net_directional_expectancy is not None
+                    else None
+                ),
+                "requirements": requirements,
+                "validation_folds": fold_rows,
+                "cohorts": cohorts,
+                "diagnostic": diagnostic,
+            },
+            experiment_id=EXPERIMENT_EARNINGS_INTELLIGENCE,
+        )
 
     def _ordered_rows(
         self,

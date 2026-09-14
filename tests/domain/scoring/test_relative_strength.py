@@ -35,6 +35,8 @@ def test_relative_strength_leader_never_changes_live_score():
     assert view.status == "leader"
     assert view.score is not None and view.score >= 70
     assert view.applied_impact == 0
+    assert view.lifecycle_label == "UNVERIFIED"
+    assert view.experiment_ids == ("group_rs",)
     assert view.coverage_score == 100
     assert view.market_relative_pct is not None and view.market_relative_pct > 0
     assert view.sector_relative_pct is not None and view.sector_relative_pct > 0

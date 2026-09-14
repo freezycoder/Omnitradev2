@@ -11,6 +11,8 @@ from statistics import fmean
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from config.performance import MIN_EXECUTION_SCORE, PERFORMANCE_DB_FILE
+from domain.research.lifecycle import LifecycleLabel, ShadowCandidate
+from domain.research.promotion import evaluate_promotion
 from storage.repositories.outcome_repository import OutcomeRepository
 
 
@@ -115,15 +117,21 @@ class CalibrationResearchService:
             folds=folds,
             valid_validation_dates=valid_validation_dates,
         )
+        promotion = evaluate_promotion(ShadowCandidate(experiment_id="calibration_research"))
         return {
             "status": "research_only",
+            "lifecycle_label": LifecycleLabel.UNVERIFIED.value,
             "deployment_guard": {
                 "automatic_config_changes": False,
+                "automatic_promotion": False,
+                "live_write_allowed": False,
                 "message": (
                     "Candidates are evidence for shadow testing only. "
-                    "This analysis never writes production score thresholds."
+                    "This analysis never writes production score thresholds "
+                    "and cannot promote shadow overlays onto live recommendations."
                 ),
             },
+            "promotion": promotion.to_dict(),
             "methodology": {
                 "score_thresholds": list(SCORE_THRESHOLDS),
                 "cost_scenarios_bps": list(COST_SCENARIOS_BPS),

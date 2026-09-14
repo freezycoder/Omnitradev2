@@ -116,15 +116,18 @@ OmniTrade now collects three independent context sources:
 The combined overlay is capped at `±10` modeled points. It is research-only:
 
 - `modeled_impact` records what the overlay would have contributed.
-- `applied_impact` is always `0`.
+- `applied_impact` is always `0` until promotion receipts authorize a live write.
+- Lifecycle label is `UNVERIFIED` (or `DEMO` on demo data). Scanners never assign `REAL`.
 - Missing sources reduce coverage and are never interpreted as neutral evidence.
 - Signal snapshots retain the shadow score, component evidence, and coverage for outcome analysis.
 
 Calibration keeps activation locked until the shadow cohort has at least 50
 resolved directional signals across 12 dates, positive directional expectancy
 after costs, two positive chronological validation folds, and average coverage
-of at least 70%. Passing those gates only makes the overlay eligible for manual
-review; it never activates itself.
+of at least 70%. Passing those gates only makes the overlay eligible for
+manual review. Live promotion additionally requires multiple-testing and
+forward-paper receipts plus explicit human authorization; see
+`docs/research_promotion_gates.md`. It never activates itself.
 
 ## 7. Relative-Strength Shadow Layer
 
@@ -147,10 +150,10 @@ The raw leadership measure combines weighted market excess return (55%),
 weighted sector excess return (30%), and sector performance versus the market
 (15%). Missing comparisons reduce coverage instead of being scored as neutral.
 
-The resulting 0–100 score is labeled leader, outperforming, neutral,
-underperforming, or lagging. It remains research-only:
+The factor remains research-only:
 
 - `applied_impact` is always `0`.
+- Lifecycle label is `UNVERIFIED` until promotion receipts exist.
 - Live long- and short-term scores are unchanged.
 - Signal snapshots retain the full time-window evidence and percentile ranks.
 - Shared benchmark histories are fetched once and cached for six hours.
@@ -159,7 +162,8 @@ Calibration uses the same minimum evidence gates as the alternative-signal
 overlay: 50 resolved directional signals, 12 signal dates, two positive
 chronological validation folds, positive net directional expectancy, and
 average coverage of at least 70%. Passing the gate only makes the factor
-eligible for manual review.
+eligible for manual review. Live promotion still requires the full receipt
+set in `docs/research_promotion_gates.md` and is never automatic.
 
 ## 8. Earnings-Intelligence Shadow Layer
 
@@ -197,6 +201,8 @@ The factor remains research-only:
   dates, two positive chronological folds, positive expectancy after modeled
   costs, and average coverage of at least 70%.
 - Passing every gate permits manual review only; activation is never automatic.
+- Live promotion still requires multiple-testing and forward-paper receipts;
+  see `docs/research_promotion_gates.md`.
 
 ## 9. Strategy_v1 Execution Logic
 
