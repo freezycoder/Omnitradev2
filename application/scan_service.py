@@ -69,6 +69,21 @@ def _earnings_intelligence_fields(result: TickerAnalysis) -> dict[str, Any]:
     }
 
 
+def _finra_short_volume_fields(result: TickerAnalysis) -> dict[str, Any]:
+    view = result.finra_short_volume_view
+    return {
+        "finra_short_volume_status": view.status,
+        "finra_short_volume_applied_impact": view.applied_impact,
+        "finra_short_ratio": view.short_ratio,
+        "finra_exempt_share": view.exempt_share,
+        "finra_short_volume_provenance": view.provenance,
+        "finra_short_volume_feature_family": view.feature_family,
+        "finra_short_volume_not_short_interest": view.not_short_interest,
+        "finra_exchange_short_volume_included": view.exchange_short_volume_included,
+        "finra_short_volume_as_of": view.as_of_date,
+    }
+
+
 def _passes_universe_filters(result: TickerAnalysis) -> bool:
     filters = universe_filters_for_ticker(result.ticker)
     price = result.snapshot["current_price"] or 0
@@ -103,6 +118,7 @@ def _build_market_row(result: TickerAnalysis) -> dict[str, Any]:
         "alternative_signal_coverage": result.alternative_signal_view.coverage_score,
         **_relative_strength_fields(result),
         **_earnings_intelligence_fields(result),
+        **_finra_short_volume_fields(result),
     }
 
 
@@ -139,6 +155,7 @@ def _build_long_term_row(result: TickerAnalysis) -> dict[str, Any]:
         "alternative_signal_status": result.alternative_signal_view.status,
         **_relative_strength_fields(result),
         **_earnings_intelligence_fields(result),
+        **_finra_short_volume_fields(result),
         "accounting_quality_score": result.accounting_quality_view.accounting_quality_score,
         "shenanigan_risk_score": result.accounting_quality_view.shenanigan_risk_score,
         "accounting_data_completeness_score": result.accounting_quality_view.accounting_data_completeness_score,
@@ -195,6 +212,7 @@ def _build_short_term_row(result: TickerAnalysis) -> dict[str, Any]:
         "alternative_signal_status": result.alternative_signal_view.status,
         **_relative_strength_fields(result),
         **_earnings_intelligence_fields(result),
+        **_finra_short_volume_fields(result),
         "accounting_warning": result.short_term_recommendation.accounting_warning,
         "accounting_label": result.accounting_quality_view.label,
         "shenanigan_risk_score": result.accounting_quality_view.shenanigan_risk_score,

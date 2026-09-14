@@ -48,6 +48,11 @@ modeled impact is capped at ±10, their applied impact remains zero, and the
 Calibration page must meet every evidence gate before activation is even
 eligible for manual review.
 
+FINRA CNMS short volume is also shadow-only. It is not short interest, does
+not include exchange short volume, never changes live recommendations, and
+must not be shipped commercially without Alvaro approval and a ToU agreement.
+See `docs/legal/finra_short_sale_volume_tou.md`.
+
 After deploy, open:
 
 ```text

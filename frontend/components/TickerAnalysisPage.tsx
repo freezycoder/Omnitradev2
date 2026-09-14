@@ -19,7 +19,7 @@ import {
   READ_ONLY_API_CAPABILITIES,
   TickerPayload
 } from "@/lib/api";
-import { asNumber, formatAvailable, formatCurrency, formatLargeNumber, formatPct, formatSignedPct, pickArray, pickRecord, sentenceCase } from "@/lib/format";
+import { asNumber, formatAvailable, formatCurrency, formatLargeNumber, formatPct, formatSignedPct, formatWeight, pickArray, pickRecord, sentenceCase } from "@/lib/format";
 
 type Row = Record<string, unknown>;
 type DataMode = "auto" | "live" | "demo";
@@ -199,6 +199,13 @@ export function TickerAnalysisPage() {
     : [];
   const earningsWarnings = Array.isArray(earningsIntelligence.warnings)
     ? earningsIntelligence.warnings.map((item) => String(item))
+    : [];
+  const finraShortVolume = pickRecord(data?.finra_short_volume_view);
+  const finraEvidence = Array.isArray(finraShortVolume.evidence)
+    ? finraShortVolume.evidence.map((item) => String(item))
+    : [];
+  const finraWarnings = Array.isArray(finraShortVolume.warnings)
+    ? finraShortVolume.warnings.map((item) => String(item))
     : [];
   const etfExposure = pickRecord(data?.etf_exposure);
   const etfExposureRows = pickArray(etfExposure.etfs);
@@ -454,6 +461,65 @@ export function TickerAnalysisPage() {
               {earningsWarnings.length ? (
                 <ul className="grid gap-2 text-xs text-[var(--amber)]">
                   {earningsWarnings.map((item) => <li key={item}>{item}</li>)}
+                </ul>
+              ) : null}
+            </div>
+          </TerminalPanel>
+
+          <TerminalPanel title="FINRA off-exchange short volume" eyebrow="Reg SHO CNMSshvol · not short interest · shadow only">
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                <MetricCard
+                  label="Short Ratio"
+                  value={formatWeight(finraShortVolume.short_ratio)}
+                  meta="ShortVolume / TotalVolume"
+                  tone="info"
+                />
+                <MetricCard
+                  label="Exempt Share"
+                  value={formatWeight(finraShortVolume.exempt_share)}
+                  meta="ShortExemptVolume / TotalVolume"
+                  tone="neutral"
+                />
+                <MetricCard
+                  label="Provenance"
+                  value={String(finraShortVolume.provenance ?? "FINRA_OFF_EXCHANGE")}
+                  meta={String(finraShortVolume.facility ?? "CNMS")}
+                  tone="info"
+                />
+                <MetricCard
+                  label="Applied Impact"
+                  value={String(finraShortVolume.applied_impact ?? 0)}
+                  meta="Live recommendations unchanged"
+                  tone="neutral"
+                />
+                <MetricCard
+                  label="Feature Family"
+                  value={finraShortVolume.not_short_interest === false ? "Short interest" : "Short volume"}
+                  meta="Not bi-monthly short interest"
+                  tone="warning"
+                />
+                <MetricCard
+                  label="Exchange Short Volume"
+                  value={finraShortVolume.exchange_short_volume_included ? "Included" : "Missing"}
+                  meta={`As of ${String(finraShortVolume.as_of_date ?? "N/A")}`}
+                  tone="warning"
+                />
+              </div>
+              <div className="border-l-2 border-[var(--accent)] pl-4 text-sm leading-6 text-[var(--muted)]">
+                {String(finraShortVolume.summary ?? "FINRA off-exchange short volume is unavailable.")}
+              </div>
+              <div className="text-xs leading-5 text-[var(--dim)]">
+                FINRA short-sale volume is a daily Reg SHO facility file for TRF/ADF/ORF. It is not bi-monthly short interest and is not consolidated with exchange short volume. Non-commercial research only until Alvaro approves a commercial path.
+              </div>
+              {finraEvidence.length ? (
+                <ul className="grid gap-2 text-sm text-[var(--muted)] md:grid-cols-2">
+                  {finraEvidence.map((item) => <li key={item} className="border-l border-[var(--line-strong)] pl-3">{item}</li>)}
+                </ul>
+              ) : null}
+              {finraWarnings.length ? (
+                <ul className="grid gap-2 text-xs text-[var(--amber)]">
+                  {finraWarnings.map((item) => <li key={item}>{item}</li>)}
                 </ul>
               ) : null}
             </div>

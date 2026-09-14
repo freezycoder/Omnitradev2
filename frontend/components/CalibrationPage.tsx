@@ -132,6 +132,14 @@ export function CalibrationPage() {
     };
   });
   const positiveEarningsFolds = pickArray(earningsIntelligenceAnalysis.validation_folds).filter((row) => row.positive === true).length;
+  const finraShortVolumeAnalysis = pickRecord(data?.finra_short_volume_analysis);
+  const finraResearch = pickRecord(finraShortVolumeAnalysis.walk_forward);
+  const finraPrimary = pickRecord(finraResearch.primary);
+  const finraLegalGate = pickRecord(finraShortVolumeAnalysis.legal_gate);
+  const finraSample = pickRecord(finraResearch.sample);
+  const finraLogged = pickRecord(finraShortVolumeAnalysis.logged_snapshots);
+  const finraFolds = pickArray(finraPrimary.folds);
+  const significantFinraFolds = finraFolds.filter((row) => row.significant === true).length;
 
   const scoreChartRows = scoreBuckets.map((row) => ({
     bucket: String(row.score_bucket ?? "N/A"),
@@ -259,6 +267,71 @@ export function CalibrationPage() {
                   columns={calibrationColumns("earnings_intelligence_band")}
                   emptyLabel="Earnings-intelligence cohorts will appear after the new signals resolve."
                 />
+              </div>
+            </div>
+          </TerminalPanel>
+
+          <TerminalPanel title="FINRA short-volume experiment" eyebrow="CNMSshvol short_ratio · not short interest · shadow only">
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard
+                  label="Verdict"
+                  value={sentenceCase(finraResearch.verdict)}
+                  meta={String(finraResearch.verdict_summary ?? "Walk-forward not yet ingested")}
+                  tone={String(finraResearch.verdict) === "success" ? "positive" : String(finraResearch.verdict) === "fail" ? "negative" : "warning"}
+                />
+                <MetricCard
+                  label="Significant Folds"
+                  value={`${String(significantFinraFolds)} / ${String(finraPrimary.eligible_folds ?? 0)}`}
+                  meta="Primary 5d excess IC after liquidity controls"
+                  tone={significantFinraFolds >= 2 ? "positive" : "warning"}
+                />
+                <MetricCard
+                  label="History Depth"
+                  value={String(finraSample.trading_days ?? 0)}
+                  meta={`Need ${String(finraSample.minimum_trading_days ?? 180)} sessions`}
+                  tone={finraSample.history_sufficient ? "positive" : "warning"}
+                />
+                <MetricCard
+                  label="Commercial ToU"
+                  value={finraLegalGate.commercial_use_allowed ? "Allowed" : "Blocked"}
+                  meta="Non-commercial research only until Alvaro approval"
+                  tone={finraLegalGate.commercial_use_allowed ? "positive" : "warning"}
+                />
+              </div>
+              <DiagnosticCard diagnostic={pickRecord(finraShortVolumeAnalysis.diagnostic)} />
+              <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+                <DataTable
+                  rows={[
+                    { requirement: "Feature family", required: "short_volume", current: String(finraShortVolumeAnalysis.feature_family ?? "short_volume"), status: finraShortVolumeAnalysis.not_short_interest ? "Passed" : "Pending" },
+                    { requirement: "Provenance", required: "FINRA_OFF_EXCHANGE", current: String(finraShortVolumeAnalysis.provenance ?? "N/A"), status: String(finraShortVolumeAnalysis.provenance) === "FINRA_OFF_EXCHANGE" ? "Passed" : "Pending" },
+                    { requirement: "Exchange short volume", required: "Documented missing", current: finraShortVolumeAnalysis.exchange_short_volume_included ? "Included" : "Missing", status: finraShortVolumeAnalysis.exchange_short_volume_included ? "Pending" : "Passed" },
+                    { requirement: "Live applied impact", required: 0, current: finraShortVolumeAnalysis.applied_impact ?? 0, status: (finraShortVolumeAnalysis.applied_impact ?? 0) === 0 ? "Passed" : "Pending" },
+                    { requirement: "Activation", required: "Locked", current: finraShortVolumeAnalysis.activation_ready ? "Review Ready" : "Locked", status: finraShortVolumeAnalysis.activation_ready ? "Pending" : "Passed" },
+                    { requirement: "Logged snapshots", required: "Shadow log only", current: finraLogged.resolved_signals_with_feature ?? 0, status: "Passed" }
+                  ]}
+                  columns={[
+                    { key: "requirement", header: "Evidence gate", render: (row) => <span className="font-semibold text-white">{String(row.requirement)}</span> },
+                    { key: "required", header: "Required", align: "right" },
+                    { key: "current", header: "Current", align: "right" },
+                    { key: "status", header: "Status", render: (row) => <StatusBadge tone={row.status === "Passed" ? "positive" : "warning"}>{String(row.status)}</StatusBadge> }
+                  ]}
+                  emptyLabel="No FINRA short-volume gates are available."
+                />
+                <DataTable
+                  rows={finraFolds}
+                  columns={[
+                    { key: "fold", header: "Fold", render: (row) => <span className="font-semibold text-white">{String(row.fold ?? "N/A")}</span> },
+                    { key: "daily_ic_count", header: "Daily ICs", align: "right" },
+                    { key: "mean_daily_ic", header: "Mean IC", align: "right" },
+                    { key: "p_value", header: "p-value", align: "right" },
+                    { key: "significant", header: "Significant", render: (row) => <StatusBadge tone={row.significant === true ? "positive" : "warning"}>{row.significant === true ? "Yes" : "No"}</StatusBadge> }
+                  ]}
+                  emptyLabel="Walk-forward folds appear after a FINRA panel is ingested."
+                />
+              </div>
+              <div className="text-xs leading-5 text-[var(--dim)]">
+                {String(finraShortVolumeAnalysis.coverage_caveat ?? "Exchange short volume is absent from CNMSshvol.")} This is not bi-monthly short interest. Commercial shipping remains blocked.
               </div>
             </div>
           </TerminalPanel>
