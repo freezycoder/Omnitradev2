@@ -198,6 +198,18 @@ The factor remains research-only:
   costs, and average coverage of at least 70%.
 - Passing every gate permits manual review only; activation is never automatic.
 
+The same snapshots now also shadow-log post-event excess returns versus SPY and
+the sector ETF at 3, 10, 20, and 60 trading sessions for each of the last four
+EPS surprises. Those longer windows are calibration-only: they do not enter the
+earnings score, coverage, or live recommendation. The pre-registered PEAD
+experiment (`pead_shadow_v1_2026-09-14`) tests whether surprise-aligned SPY
+excess at 20 or 60 sessions is distinguishable from zero after 10 bp costs and
+adds at least 0.50 pp beyond the existing 3-session move. Primary bucket:
+`|surprise| >= 5%`. Cuts at 10% and 20%, plus size and sector, are descriptive
+only. If the complete-event count is below the pre-registered N, the eval aborts
+as data-blocked rather than failing the hypothesis. Price history is the 2-year
+daily store used for live analysis.
+
 ## 9. Strategy_v1 Execution Logic
 
 Strategy_v1 is the execution layer for short-term signals.

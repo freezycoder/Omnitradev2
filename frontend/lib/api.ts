@@ -115,6 +115,7 @@ export type CalibrationPayload = {
   alternative_signal_analysis?: ApiRecord;
   relative_strength_analysis?: ApiRecord;
   earnings_intelligence_analysis?: ApiRecord;
+  pead_drift_experiment?: ApiRecord;
 };
 
 export type WatchlistItem = {
