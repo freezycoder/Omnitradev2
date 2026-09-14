@@ -70,7 +70,17 @@ def _earnings_intelligence_fields(result: TickerAnalysis) -> dict[str, Any]:
         "current_quarter_eps_growth_pct": view.current_quarter_growth_pct,
         "net_eps_revisions_30d": view.net_revisions_30d,
         "post_earnings_filing_3d_return_pct": view.post_filing_3d_return_pct,
+        "pead_10d_spy_excess_pct": _pead_excess(view, 10),
+        "pead_20d_spy_excess_pct": _pead_excess(view, 20),
+        "pead_60d_spy_excess_pct": _pead_excess(view, 60),
+        "pead_event_count": len(view.event_drift),
+        "pead_price_history_sessions": view.pead_price_history_sessions,
     }
+
+
+def _pead_excess(view: Any, sessions: int) -> float | None:
+    horizon = view.latest_horizon(sessions)
+    return None if horizon is None else horizon.market_excess_pct
 
 
 def _passes_universe_filters(result: TickerAnalysis) -> bool:

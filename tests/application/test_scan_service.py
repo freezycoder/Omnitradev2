@@ -92,6 +92,8 @@ def test_scan_exposes_earnings_event_risk_without_applied_impact():
     assert fields["earnings_intelligence_applied_impact"] == 0
     assert fields["earnings_intelligence_lifecycle"] == "UNVERIFIED"
     assert fields["earnings_intelligence_lifecycle_stage"] == "candidate"
+    assert fields["pead_event_count"] == 0
+    assert fields["pead_10d_spy_excess_pct"] is None
 
 
 def test_rank_results_keeps_every_recommendation_tier(monkeypatch):
