@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from application.calibration_research_service import CalibrationResearchService
+from application.pead_drift_eval_service import PeadDriftEvalService
 from application.performance_lab_service import PerformanceLabService
 from config.performance import (
     COMMISSION_PER_TRADE,
@@ -89,6 +90,10 @@ class CalibrationService:
         alternative_signal_analysis = self.get_alternative_signal_analysis()
         relative_strength_analysis = self.get_relative_strength_analysis()
         earnings_intelligence_analysis = self.get_earnings_intelligence_analysis()
+        pead_drift_experiment = PeadDriftEvalService(
+            outcome_repository=self._outcome_repository,
+            db_path=self._db_path,
+        ).build_payload()
         active_thresholds = self.get_active_thresholds()
         payload = {
             "summary": {
@@ -108,6 +113,7 @@ class CalibrationService:
             "alternative_signal_analysis": alternative_signal_analysis,
             "relative_strength_analysis": relative_strength_analysis,
             "earnings_intelligence_analysis": earnings_intelligence_analysis,
+            "pead_drift_experiment": pead_drift_experiment,
             "edge_filter": self._performance_lab_service.get_edge_filter_payload(),
             "research_calibration": CalibrationResearchService(
                 outcome_repository=self._outcome_repository,
@@ -131,6 +137,7 @@ class CalibrationService:
                 "alternative_signal_validation": alternative_signal_analysis["diagnostic"],
                 "relative_strength_validation": relative_strength_analysis["diagnostic"],
                 "earnings_intelligence_validation": earnings_intelligence_analysis["diagnostic"],
+                "pead_drift_experiment": pead_drift_experiment["diagnostic"],
             },
         }
         return payload
