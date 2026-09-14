@@ -161,6 +161,11 @@ chronological validation folds, positive net directional expectancy, and
 average coverage of at least 70%. Passing the gate only makes the factor
 eligible for manual review.
 
+A separate shadow universe-participation gate is documented in
+`docs/experiments/market_breadth_regime_gate.md`. It is a regime filter for
+existing single-name shadow hits, not a buy list, and does not change live
+scores, ranking, or recommendations.
+
 ## 8. Earnings-Intelligence Shadow Layer
 
 Every live ticker analysis assembles a point-in-time earnings view from:
