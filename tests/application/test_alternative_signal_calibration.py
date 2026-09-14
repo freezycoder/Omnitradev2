@@ -135,3 +135,37 @@ def test_earnings_intelligence_calibration_rewards_aligned_score_bands():
         row["earnings_intelligence_band"]
         for row in payload["cohorts"]
     } == {"Strong", "Deteriorating"}
+
+
+def test_finra_short_volume_calibration_stays_shadow_and_locked(monkeypatch, tmp_path):
+    monkeypatch.setattr("application.calibration_service.FINRA_REGSHO_CACHE_DIR", tmp_path)
+    row = _row(1, 0, 0.5)
+    row["feature_snapshot_json"] = json.dumps(
+        {
+            "finra_short_volume": {
+                "short_ratio": 0.42,
+                "exempt_share": 0.01,
+                "applied_impact": 0,
+                "provenance": "FINRA_OFF_EXCHANGE",
+                "feature_family": "short_volume",
+                "not_short_interest": True,
+            }
+        }
+    )
+    service = CalibrationService.__new__(CalibrationService)
+    service._outcome_repository = _OutcomeRepository([row])
+
+    payload = service.get_finra_short_volume_analysis()
+
+    assert payload["mode"] == "shadow"
+    assert payload["activation_ready"] is False
+    assert payload["automatic_activation"] is False
+    assert payload["applied_impact"] == 0
+    assert payload["not_short_interest"] is True
+    assert payload["provenance"] == "FINRA_OFF_EXCHANGE"
+    assert payload["exchange_short_volume_included"] is False
+    assert payload["legal_gate"]["commercial_use_allowed"] is False
+    assert payload["legal_gate"]["shipping_allowed"] is False
+    assert payload["logged_snapshots"]["resolved_signals_with_feature"] == 1
+    assert payload["walk_forward"]["pre_registration"]["primary_feature"] == "short_ratio"
+

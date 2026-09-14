@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from application.calibration_research_service import CalibrationResearchService
+from application.finra_short_volume_research_service import empty_research_payload
 from application.performance_lab_service import PerformanceLabService
 from config.performance import (
     COMMISSION_PER_TRADE,
@@ -27,6 +28,9 @@ from config.performance import (
     TURNOVER_LOOKBACK_DAYS,
     estimated_round_trip_cost_pct,
 )
+from config.settings import FINRA_REGSHO_CACHE_DIR
+from domain.scoring.finra_short_volume import LEGAL_GATE, PERMANENT_COVERAGE_CAVEAT
+from storage.cache.json_cache import load_json
 from storage.repositories.outcome_repository import OutcomeRepository
 from storage.repositories.signal_repository import SignalRepository
 from storage.sqlite import connection_scope
@@ -89,6 +93,7 @@ class CalibrationService:
         alternative_signal_analysis = self.get_alternative_signal_analysis()
         relative_strength_analysis = self.get_relative_strength_analysis()
         earnings_intelligence_analysis = self.get_earnings_intelligence_analysis()
+        finra_short_volume_analysis = self.get_finra_short_volume_analysis()
         active_thresholds = self.get_active_thresholds()
         payload = {
             "summary": {
@@ -108,6 +113,7 @@ class CalibrationService:
             "alternative_signal_analysis": alternative_signal_analysis,
             "relative_strength_analysis": relative_strength_analysis,
             "earnings_intelligence_analysis": earnings_intelligence_analysis,
+            "finra_short_volume_analysis": finra_short_volume_analysis,
             "edge_filter": self._performance_lab_service.get_edge_filter_payload(),
             "research_calibration": CalibrationResearchService(
                 outcome_repository=self._outcome_repository,
@@ -131,6 +137,7 @@ class CalibrationService:
                 "alternative_signal_validation": alternative_signal_analysis["diagnostic"],
                 "relative_strength_validation": relative_strength_analysis["diagnostic"],
                 "earnings_intelligence_validation": earnings_intelligence_analysis["diagnostic"],
+                "finra_short_volume_validation": finra_short_volume_analysis["diagnostic"],
             },
         }
         return payload
@@ -931,6 +938,71 @@ class CalibrationService:
             "cohorts": cohorts,
             "diagnostic": diagnostic,
         }
+
+    def get_finra_short_volume_analysis(self) -> dict[str, Any]:
+        research = self._finra_research_payload()
+        logged_count = 0
+        ratio_values: list[float] = []
+        for row in self._outcome_repository.list_calibration_observations():
+            try:
+                snapshot = json.loads(row["feature_snapshot_json"] or "{}")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                snapshot = {}
+            shadow = snapshot.get("finra_short_volume")
+            if not isinstance(shadow, dict):
+                continue
+            logged_count += 1
+            ratio_value = shadow.get("short_ratio")
+            if isinstance(ratio_value, (int, float)):
+                ratio_values.append(float(ratio_value))
+        verdict = str(research.get("verdict") or "data_blocked")
+        diagnostic_status = {
+            "success": "Significant OOS association",
+            "fail": "No OOS association",
+            "data_blocked": "Data-blocked",
+            "legal_blocked": "ToU blocked",
+        }.get(verdict, "Collecting evidence")
+        diagnostic = {
+            "title": "FINRA short-volume validation",
+            "status": diagnostic_status,
+            "summary": str(research.get("verdict_summary") or ""),
+            "expectation": (
+                "Daily CNMS short_ratio is not bi-monthly short interest. "
+                "Exchange short volume is missing. Live recommendations stay unchanged."
+            ),
+        }
+        return {
+            "mode": "shadow",
+            "automatic_activation": False,
+            "activation_ready": False,
+            "applied_impact": 0,
+            "feature_family": "short_volume",
+            "feature_label": "FINRA off-exchange short volume",
+            "not_short_interest": True,
+            "provenance": "FINRA_OFF_EXCHANGE",
+            "exchange_short_volume_included": False,
+            "legal_gate": dict(LEGAL_GATE),
+            "coverage_caveat": PERMANENT_COVERAGE_CAVEAT,
+            "logged_snapshots": {
+                "resolved_signals_with_feature": logged_count,
+                "mean_short_ratio": (
+                    round(sum(ratio_values) / len(ratio_values), 4) if ratio_values else None
+                ),
+            },
+            "walk_forward": research,
+            "diagnostic": diagnostic,
+        }
+
+    def _finra_research_payload(self) -> dict[str, Any]:
+        cached = load_json(FINRA_REGSHO_CACHE_DIR / "experiment_payload.json", default=None)
+        if isinstance(cached, dict) and cached.get("experiment_id"):
+            return cached
+        return empty_research_payload(
+            reason=(
+                "No ingested FINRA CNMS panel is cached in this environment. "
+                "The pre-registered walk-forward still runs from injected observations in tests."
+            )
+        )
 
     def _ordered_rows(
         self,

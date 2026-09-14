@@ -125,3 +125,19 @@ def render_calibration_page(calibration_results: dict) -> None:
         )
     else:
         st.info("No threshold-filter comparison is available yet.")
+
+    finra = calibration_results.get("finra_short_volume_analysis", {})
+    render_rank_sheet_header("FINRA Off-Exchange Short Volume")
+    st.caption(
+        "Daily CNMS short_ratio is not bi-monthly short interest. Exchange short volume is missing. Shadow-only."
+    )
+    if finra:
+        research = finra.get("walk_forward", {})
+        st.write(
+            f"Verdict: {research.get('verdict', 'n/a')} · provenance {finra.get('provenance')} · "
+            f"applied impact {finra.get('applied_impact', 0)} · commercial ToU "
+            f"{'allowed' if finra.get('legal_gate', {}).get('commercial_use_allowed') else 'blocked'}."
+        )
+        st.caption(finra.get("coverage_caveat", ""))
+    else:
+        st.info("FINRA short-volume experiment metadata is unavailable.")

@@ -7,12 +7,14 @@ from dataclasses import replace
 from application.scan_service import (
     _assign_relative_strength_percentiles,
     _earnings_intelligence_fields,
+    _finra_short_volume_fields,
     _passes_universe_filters,
     _rank_results,
 )
 from domain.scoring.earnings_intelligence import (
     build_unavailable_earnings_intelligence_view,
 )
+from domain.scoring.finra_short_volume import build_unavailable_finra_short_volume_view
 from domain.scoring.relative_strength import build_unavailable_relative_strength_view
 
 
@@ -90,6 +92,29 @@ def test_scan_exposes_earnings_event_risk_without_applied_impact():
     assert fields["earnings_event_risk"] == "high"
     assert fields["days_to_earnings"] == 2
     assert fields["earnings_intelligence_applied_impact"] == 0
+
+
+def test_scan_exposes_finra_short_volume_without_applied_impact():
+    base = build_unavailable_finra_short_volume_view("fixture")
+    analysis = SimpleNamespace(
+        finra_short_volume_view=replace(
+            base,
+            status="available",
+            short_ratio=0.37,
+            exempt_share=0.004,
+            provenance="FINRA_OFF_EXCHANGE",
+            applied_impact=0,
+            as_of_date="2026-09-11",
+        )
+    )
+
+    fields = _finra_short_volume_fields(analysis)
+
+    assert fields["finra_short_ratio"] == 0.37
+    assert fields["finra_short_volume_provenance"] == "FINRA_OFF_EXCHANGE"
+    assert fields["finra_short_volume_not_short_interest"] is True
+    assert fields["finra_exchange_short_volume_included"] is False
+    assert fields["finra_short_volume_applied_impact"] == 0
 
 
 def test_rank_results_keeps_every_recommendation_tier(monkeypatch):

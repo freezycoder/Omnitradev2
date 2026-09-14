@@ -45,6 +45,12 @@ counts, the next earnings date, recent guidance headlines, and the observed
 three-session move after the latest SEC earnings filing. Imminent earnings are
 flagged as event risk, never interpreted as bullish or bearish by themselves.
 
+FINRA Reg SHO daily short volume (`CNMSshvol`) is a separate **shadow**
+microstructure factor. It records off-exchange `short_ratio` and `exempt_share`
+with provenance `FINRA_OFF_EXCHANGE`. This is **not** bi-monthly short interest,
+exchange short volume is missing, applied impact is zero, and commercial use
+is blocked until Alvaro approval. See `docs/legal/finra_short_sale_volume_tou.md`.
+
 This product uses the FRED® API but is not endorsed or certified by the
 Federal Reserve Bank of St. Louis.
 
