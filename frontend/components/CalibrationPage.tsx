@@ -11,7 +11,7 @@ import { SectionHeader } from "@/components/SectionHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { TerminalPanel } from "@/components/TerminalPanel";
 import { CalibrationPayload, fetchCalibration } from "@/lib/api";
-import { asNumber, formatPct, pickArray, pickRecord, sentenceCase } from "@/lib/format";
+import { asNumber, formatPct, formatSignedPct, pickArray, pickRecord, sentenceCase } from "@/lib/format";
 
 type Row = Record<string, unknown>;
 
@@ -132,6 +132,14 @@ export function CalibrationPage() {
     };
   });
   const positiveEarningsFolds = pickArray(earningsIntelligenceAnalysis.validation_folds).filter((row) => row.positive === true).length;
+  const peadExperiment = pickRecord(data?.pead_drift_experiment);
+  const peadProtocol = pickRecord(peadExperiment.protocol);
+  const peadAbort = pickRecord(peadProtocol.abort_criteria);
+  const peadDecay = pickArray(peadExperiment.decay_curve);
+  const peadHorizons = pickArray(peadExperiment.confirmatory_horizons);
+  const peadBuckets = pickArray(peadExperiment.surprise_buckets);
+  const peadVerdict = String(peadExperiment.verdict ?? "data_blocked");
+  const peadTone = peadVerdict === "success" ? "positive" : peadVerdict === "fail" ? "negative" : "warning";
 
   const scoreChartRows = scoreBuckets.map((row) => ({
     bucket: String(row.score_bucket ?? "N/A"),
@@ -260,6 +268,69 @@ export function CalibrationPage() {
                   emptyLabel="Earnings-intelligence cohorts will appear after the new signals resolve."
                 />
               </div>
+            </div>
+          </TerminalPanel>
+
+          <TerminalPanel title="PEAD 10/20/60 shadow experiment" eyebrow="Pre-registered · SPY excess · no live scoring">
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard label="Verdict" value={String(peadExperiment.status ?? "Data blocked")} meta="Never changes live recommendations" tone={peadTone} />
+                <MetricCard label="Primary events" value={String(peadExperiment.primary_event_count ?? 0)} meta={String(peadExperiment.primary_bucket ?? "|surprise| >= 5%")} tone="info" />
+                <MetricCard label="Held-out events" value={String(peadExperiment.oos_event_count ?? 0)} meta="Walk-forward validation dates" tone="info" />
+                <MetricCard label="Abort N (20d)" value={String(pickRecord(peadAbort.minimum_primary_n_by_horizon)["20"] ?? 40)} meta="Unmet N is data-blocked, not fail" tone="neutral" />
+              </div>
+              <div className="border-l-2 border-[var(--accent)] pl-4 text-sm leading-6 text-[var(--muted)]">
+                {String(peadExperiment.summary ?? "PEAD shadow metrics will appear after scans log event_drift windows.")}
+              </div>
+              <div className="grid gap-5 xl:grid-cols-2">
+                <DataTable
+                  rows={peadHorizons}
+                  columns={[
+                    { key: "sessions", header: "Sessions", render: (row) => <span className="font-semibold text-white">{String(row.sessions)}</span> },
+                    { key: "oos_n", header: "OOS N", align: "right" },
+                    { key: "testable", header: "Testable", render: (row) => <StatusBadge tone={row.testable === true ? "positive" : "warning"}>{row.testable === true ? "Yes" : "No"}</StatusBadge> },
+                    {
+                      key: "mean",
+                      header: "OOS aligned excess",
+                      align: "right",
+                      render: (row) => formatSignedPct(pickRecord(row.oos).mean_after_cost_pct, 2)
+                    },
+                    {
+                      key: "increment",
+                      header: "Δ vs 3d",
+                      align: "right",
+                      render: (row) => formatSignedPct(pickRecord(row.incremental_vs_3_session).mean_gross_increment_pct, 2)
+                    },
+                    {
+                      key: "passed",
+                      header: "Passed",
+                      render: (row) => <StatusBadge tone={row.passed === true ? "positive" : "warning"}>{row.passed === true ? "Yes" : "No"}</StatusBadge>
+                    }
+                  ]}
+                  emptyLabel="Confirmatory 20/60 session tests appear after event_drift is logged."
+                />
+                <DataTable
+                  rows={peadDecay}
+                  columns={[
+                    { key: "sessions", header: "Horizon", render: (row) => <span className="font-semibold text-white">{String(row.sessions)} sess</span> },
+                    { key: "n", header: "N", align: "right" },
+                    { key: "mean_after_cost_pct", header: "Mean aligned", align: "right", render: (row) => formatSignedPct(row.mean_after_cost_pct, 2) },
+                    { key: "median_pct", header: "Median", align: "right", render: (row) => formatSignedPct(row.median_pct, 2) },
+                    { key: "hit_rate_pct", header: "Hit rate", align: "right", render: (row) => formatPct(row.hit_rate_pct, 1) }
+                  ]}
+                  emptyLabel="Decay curve needs complete post-event windows in the primary surprise bucket."
+                />
+              </div>
+              <DataTable
+                rows={peadBuckets}
+                columns={[
+                  { key: "bucket", header: "Surprise cut", render: (row) => <span className="font-semibold text-white">{String(row.bucket)}</span> },
+                  { key: "role", header: "Role", render: (row) => sentenceCase(row.role) },
+                  { key: "event_count", header: "Events", align: "right" },
+                  { key: "oos_event_count", header: "OOS", align: "right" }
+                ]}
+                emptyLabel="Surprise buckets are pre-registered at 5/10/20 percent."
+              />
             </div>
           </TerminalPanel>
 
