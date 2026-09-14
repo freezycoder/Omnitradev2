@@ -6,6 +6,7 @@ from typing import Any
 
 from application.calibration_research_service import CalibrationResearchService
 from application.performance_lab_service import PerformanceLabService
+from config.section16 import protocol_payload
 from config.performance import (
     COMMISSION_PER_TRADE,
     COST_FILTER_ENABLED,
@@ -58,6 +59,13 @@ EARNINGS_INTELLIGENCE_BAND_ORDER = {
     "Strong": 4,
     "Unknown": 5,
 }
+SECTION16_BAND_ORDER = {
+    "OpenMarketSell": 0,
+    "Neutral": 1,
+    "OpenMarketBuy": 2,
+    "ClusterBuy": 3,
+    "Unknown": 4,
+}
 REGIME_ORDER = {"MOMENTUM": 0, "MEAN_REVERSION": 1, "UNKNOWN": 2}
 MIN_RESOLVED_FOR_DIAGNOSTIC = 30
 
@@ -89,6 +97,7 @@ class CalibrationService:
         alternative_signal_analysis = self.get_alternative_signal_analysis()
         relative_strength_analysis = self.get_relative_strength_analysis()
         earnings_intelligence_analysis = self.get_earnings_intelligence_analysis()
+        section16_insider_analysis = self.get_section16_insider_analysis()
         active_thresholds = self.get_active_thresholds()
         payload = {
             "summary": {
@@ -108,6 +117,7 @@ class CalibrationService:
             "alternative_signal_analysis": alternative_signal_analysis,
             "relative_strength_analysis": relative_strength_analysis,
             "earnings_intelligence_analysis": earnings_intelligence_analysis,
+            "section16_insider_analysis": section16_insider_analysis,
             "edge_filter": self._performance_lab_service.get_edge_filter_payload(),
             "research_calibration": CalibrationResearchService(
                 outcome_repository=self._outcome_repository,
@@ -131,6 +141,7 @@ class CalibrationService:
                 "alternative_signal_validation": alternative_signal_analysis["diagnostic"],
                 "relative_strength_validation": relative_strength_analysis["diagnostic"],
                 "earnings_intelligence_validation": earnings_intelligence_analysis["diagnostic"],
+                "section16_insider_validation": section16_insider_analysis["diagnostic"],
             },
         }
         return payload
@@ -925,6 +936,187 @@ class CalibrationService:
                 round(net_directional_expectancy, 2)
                 if net_directional_expectancy is not None
                 else None
+            ),
+            "requirements": requirements,
+            "validation_folds": fold_rows,
+            "cohorts": cohorts,
+            "diagnostic": diagnostic,
+        }
+
+    def get_section16_insider_analysis(self) -> dict[str, Any]:
+        rows = self._outcome_repository.list_calibration_observations()
+        parsed_rows: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                snapshot = json.loads(row["feature_snapshot_json"] or "{}")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                snapshot = {}
+            shadow = snapshot.get("section16_insider")
+            if not isinstance(shadow, dict):
+                impact = None
+                coverage = None
+                cluster_flag = False
+                band = "Unknown"
+            else:
+                impact_value = shadow.get("modeled_impact")
+                impact = float(impact_value) if isinstance(impact_value, (int, float)) else None
+                coverage_value = shadow.get("coverage_score")
+                coverage = float(coverage_value) if isinstance(coverage_value, (int, float)) else None
+                cluster_flag = bool(shadow.get("cluster_flag"))
+                if impact is None:
+                    band = "Unknown"
+                elif cluster_flag and (impact or 0) > 0:
+                    band = "ClusterBuy"
+                elif (impact or 0) > 0:
+                    band = "OpenMarketBuy"
+                elif (impact or 0) < 0:
+                    band = "OpenMarketSell"
+                else:
+                    band = "Neutral"
+            parsed_rows.append(
+                {
+                    "signal_id": row["signal_id"],
+                    "ticker": row["ticker"],
+                    "created_at": row["created_at"],
+                    "realized_return_pct": row["realized_return_pct"],
+                    "impact": impact,
+                    "coverage": coverage,
+                    "cluster_flag": cluster_flag,
+                    "applied_impact": 0 if not isinstance(shadow, dict) else shadow.get("applied_impact", 0),
+                    "band": band,
+                }
+            )
+
+        cohorts: list[dict[str, Any]] = []
+        for band in SECTION16_BAND_ORDER:
+            scoped = [row for row in parsed_rows if row["band"] == band]
+            if not scoped:
+                continue
+            stats = self._outcome_repository._rows_to_expectancy_stats(scoped)
+            coverages = [float(row["coverage"]) for row in scoped if row["coverage"] is not None]
+            impacts = [float(row["impact"]) for row in scoped if row["impact"] is not None]
+            cohorts.append(
+                {
+                    "section16_band": band,
+                    "resolved_signals": int(stats["resolved_signals"] or 0),
+                    "distinct_tickers": len({str(row["ticker"]) for row in scoped}),
+                    "distinct_signal_dates": len({str(row["created_at"])[:10] for row in scoped}),
+                    "avg_shadow_impact": round(sum(impacts) / len(impacts), 2) if impacts else None,
+                    "avg_coverage_score": round(sum(coverages) / len(coverages), 1) if coverages else None,
+                    **stats,
+                    **self._with_cost_adjusted_expectancy(stats),
+                }
+            )
+        cohorts.sort(key=lambda row: SECTION16_BAND_ORDER[str(row["section16_band"])])
+
+        directional_rows = [
+            row
+            for row in parsed_rows
+            if row["impact"] not in (None, 0) and row["realized_return_pct"] is not None
+        ]
+        directional_returns = [
+            (1 if float(row["impact"]) > 0 else -1) * float(row["realized_return_pct"])
+            for row in directional_rows
+        ]
+        gross_directional_expectancy = (
+            sum(directional_returns) / len(directional_returns) if directional_returns else None
+        )
+        net_directional_expectancy = (
+            gross_directional_expectancy - self._estimated_cost_pct()
+            if gross_directional_expectancy is not None
+            else None
+        )
+        distinct_dates = sorted({str(row["created_at"])[:10] for row in directional_rows})
+        validation_dates = distinct_dates[max(1, int(len(distinct_dates) * 0.40)) :]
+        block_size = max(1, (len(validation_dates) + 2) // 3)
+        validation_blocks = [
+            validation_dates[index : index + block_size]
+            for index in range(0, len(validation_dates), block_size)
+        ][:3]
+        fold_rows: list[dict[str, Any]] = []
+        for index, dates in enumerate(validation_blocks, start=1):
+            date_set = set(dates)
+            fold = [row for row in directional_rows if str(row["created_at"])[:10] in date_set]
+            values = [
+                (1 if float(row["impact"]) > 0 else -1) * float(row["realized_return_pct"])
+                for row in fold
+            ]
+            expectancy = sum(values) / len(values) - self._estimated_cost_pct() if values else None
+            fold_rows.append(
+                {
+                    "fold": index,
+                    "resolved_signals": len(values),
+                    "distinct_signal_dates": len(date_set),
+                    "directional_net_expectancy_pct": round(expectancy, 2) if expectancy is not None else None,
+                    "positive": expectancy is not None and expectancy > 0,
+                }
+            )
+        positive_folds = sum(bool(row["positive"]) for row in fold_rows)
+        coverages = [float(row["coverage"]) for row in directional_rows if row["coverage"] is not None]
+        average_coverage = sum(coverages) / len(coverages) if coverages else None
+        live_applied = [
+            row["applied_impact"]
+            for row in parsed_rows
+            if row["applied_impact"] not in (None, 0)
+        ]
+        requirements = {
+            "minimum_resolved_signals": {
+                "required": 50,
+                "current": len(directional_rows),
+                "passed": len(directional_rows) >= 50,
+            },
+            "minimum_distinct_signal_dates": {
+                "required": 12,
+                "current": len(distinct_dates),
+                "passed": len(distinct_dates) >= 12,
+            },
+            "positive_validation_folds": {
+                "required": 2,
+                "current": positive_folds,
+                "passed": positive_folds >= 2,
+            },
+            "positive_directional_net_expectancy": {
+                "required": "> 0%",
+                "current": round(net_directional_expectancy, 2) if net_directional_expectancy is not None else None,
+                "passed": net_directional_expectancy is not None and net_directional_expectancy > 0,
+            },
+            "average_coverage": {
+                "required": 70,
+                "current": round(average_coverage, 1) if average_coverage is not None else None,
+                "passed": average_coverage is not None and average_coverage >= 70,
+            },
+            "zero_live_applied_impact": {
+                "required": 0,
+                "current": len(live_applied),
+                "passed": not live_applied,
+            },
+        }
+        activation_ready = all(bool(requirement["passed"]) for requirement in requirements.values())
+        diagnostic = {
+            "title": "Section-16 insider validation",
+            "status": "Ready for review" if activation_ready else "Collecting evidence",
+            "summary": (
+                "Open-market Section-16 intensity and frozen 3+/60d clusters have met every evidence gate. "
+                "Activation still requires an explicit model review; live ranking is unchanged."
+                if activation_ready
+                else "Section-16 open-market and cluster features remain shadow-only until walk-forward gates pass."
+            ),
+            "expectation": (
+                "Cluster-buy and open-market-buy cohorts should outperform sells after costs, nested on the existing EDGAR Form-4 baseline."
+            ),
+        }
+        return {
+            "mode": "shadow",
+            "automatic_activation": False,
+            "activation_ready": activation_ready,
+            "primary_source": "sec_insider_transactions_dataset",
+            "protocol": protocol_payload(),
+            "directional_resolved_signals": len(directional_rows),
+            "directional_gross_expectancy_pct": (
+                round(gross_directional_expectancy, 2) if gross_directional_expectancy is not None else None
+            ),
+            "directional_net_expectancy_pct": (
+                round(net_directional_expectancy, 2) if net_directional_expectancy is not None else None
             ),
             "requirements": requirements,
             "validation_folds": fold_rows,

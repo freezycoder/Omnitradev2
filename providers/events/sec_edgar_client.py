@@ -11,6 +11,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
+from providers.events.form4_xml import classify_form4_from_transactions, parse_form4_xml
 from config.settings import (
     SEC_ARCHIVES_BASE_URL,
     SEC_CACHE_TTL_SECONDS,
@@ -55,6 +56,7 @@ class SecEventBundle:
     retrieved_at: str
     events: list[SecFilingEvent] = field(default_factory=list)
     message: str | None = None
+    open_market_transactions: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -235,74 +237,46 @@ def _classify_form4(
     *,
     user_agent: str,
     timeout_seconds: int,
-) -> SecFilingEvent:
+) -> tuple[SecFilingEvent, list[Any]]:
     accession = str(row.get("accessionNumber") or "")
     primary_document = str(row.get("primaryDocument") or "")
     filing_url = _filing_url(cik, accession, primary_document)
-    purchases = 0
-    sales = 0
-    purchase_value = 0.0
-    sale_value = 0.0
+    filed_at = str(row.get("filingDate") or "")
+    transactions: list[Any] = []
     try:
-        root = ElementTree.fromstring(
-            _request_bytes(
-                filing_url,
-                user_agent=user_agent,
-                timeout_seconds=timeout_seconds,
-            )
+        xml_payload = _request_bytes(
+            filing_url,
+            user_agent=user_agent,
+            timeout_seconds=timeout_seconds,
         )
-        for transaction in root.iter():
-            if transaction.tag.rsplit("}", 1)[-1] != "nonDerivativeTransaction":
-                continue
-            code = (_find_text(transaction, "transactionCode") or "").upper()
-            acquired_disposed = (_find_text(transaction, "transactionAcquiredDisposedCode") or "").upper()
-            shares = _parse_number(_find_text(transaction, "transactionShares"))
-            price = _parse_number(_find_text(transaction, "transactionPricePerShare"))
-            value = (shares or 0.0) * (price or 0.0)
-            if code == "P" and acquired_disposed == "A":
-                purchases += 1
-                purchase_value += value
-            elif code == "S" and acquired_disposed == "D":
-                sales += 1
-                sale_value += value
+        transactions = parse_form4_xml(
+            xml_payload,
+            accession_number=accession,
+            filed_at=filed_at,
+            fallback_issuer_cik=cik,
+        )
+        category, direction, importance, summary, transaction_value = classify_form4_from_transactions(
+            transactions
+        )
     except (ElementTree.ParseError, HTTPError, URLError, TimeoutError, ValueError):
         _log.info("Could not classify Form 4 transaction details for %s.", accession, exc_info=True)
-
-    if purchases and not sales:
-        direction = 1
-        importance = 3 if purchase_value >= 250_000 else 2
-        summary = f"An insider purchase was disclosed ({purchases} open-market transaction{'s' if purchases != 1 else ''})."
-        category = "insider_purchase"
-        transaction_value = purchase_value or None
-    elif sales and not purchases:
-        direction = -1
-        importance = 1
-        summary = f"An insider sale was disclosed ({sales} open-market transaction{'s' if sales != 1 else ''})."
-        category = "insider_sale"
-        transaction_value = sale_value or None
-    elif purchases and sales:
-        direction = 0
-        importance = 1
-        summary = "Mixed open-market insider transactions were disclosed."
-        category = "insider_mixed"
-        transaction_value = (purchase_value + sale_value) or None
-    else:
-        direction = 0
-        importance = 1
+        category, direction, importance = "insider_disclosure", 0, 1
         summary = "An ownership disclosure was filed; no open-market purchase or sale was identified."
-        category = "insider_disclosure"
         transaction_value = None
 
-    return SecFilingEvent(
-        form="4",
-        filed_at=str(row.get("filingDate") or ""),
-        category=category,
-        direction=direction,
-        importance=importance,
-        summary=summary,
-        url=filing_url,
-        accession_number=accession,
-        transaction_value=transaction_value,
+    return (
+        SecFilingEvent(
+            form="4",
+            filed_at=filed_at,
+            category=category,
+            direction=direction,
+            importance=importance,
+            summary=summary,
+            url=filing_url,
+            accession_number=accession,
+            transaction_value=transaction_value,
+        ),
+        transactions,
     )
 
 
@@ -393,6 +367,7 @@ class SecEdgarClient:
         ]
         events: list[SecFilingEvent] = []
         form4_rows: list[dict[str, Any]] = []
+        open_market_transactions: list[dict[str, Any]] = []
         for row in rows:
             form = str(row.get("form") or "").upper()
             if form in {"8-K", "8-K/A"}:
@@ -446,14 +421,14 @@ class SecEdgarClient:
                 form4_rows.append(row)
 
         for row in form4_rows:
-            events.append(
-                _classify_form4(
-                    row,
-                    cik,
-                    user_agent=self.user_agent,
-                    timeout_seconds=self.timeout_seconds,
-                )
+            event, transactions = _classify_form4(
+                row,
+                cik,
+                user_agent=self.user_agent,
+                timeout_seconds=self.timeout_seconds,
             )
+            events.append(event)
+            open_market_transactions.extend(item.to_dict() for item in transactions)
 
         purchase_count = sum(event.category == "insider_purchase" for event in events)
         sale_count = sum(event.category == "insider_sale" for event in events)
@@ -492,6 +467,7 @@ class SecEdgarClient:
             retrieved_at=retrieved_at,
             events=events[:SEC_MAX_EVENTS],
             message=None if events else "No material or ownership filings were found in the lookback window.",
+            open_market_transactions=open_market_transactions,
         )
 
 
@@ -514,6 +490,11 @@ def sec_event_bundle_from_dict(payload: dict[str, Any] | None) -> SecEventBundle
         retrieved_at=str(payload.get("retrieved_at") or _now_iso()),
         events=events,
         message=str(payload["message"]) if payload.get("message") else None,
+        open_market_transactions=[
+            row
+            for row in payload.get("open_market_transactions") or []
+            if isinstance(row, dict)
+        ],
     )
 
 

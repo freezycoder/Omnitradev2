@@ -200,6 +200,10 @@ export function TickerAnalysisPage() {
   const earningsWarnings = Array.isArray(earningsIntelligence.warnings)
     ? earningsIntelligence.warnings.map((item) => String(item))
     : [];
+  const section16Insider = pickRecord(data?.section16_insider_view);
+  const section16Evidence = Array.isArray(section16Insider.evidence)
+    ? section16Insider.evidence.map((item) => String(item))
+    : [];
   const etfExposure = pickRecord(data?.etf_exposure);
   const etfExposureRows = pickArray(etfExposure.etfs);
   const alternativeComponents = pickArray(alternativeSignal.components);
@@ -550,6 +554,25 @@ export function TickerAnalysisPage() {
                   <DataTable rows={secEvents} columns={secEventColumns} emptyLabel="No SEC filing events are available for this ticker and lookback window." />
                 </div>
               </details>
+            </div>
+          </TerminalPanel>
+
+          <TerminalPanel title="Section-16 open-market insiders" eyebrow="Shadow research · SEC primary · zero live score impact">
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard label="Modeled Impact" value={`${(asNumber(section16Insider.modeled_impact) ?? 0) > 0 ? "+" : ""}${String(section16Insider.modeled_impact ?? 0)}`} meta="Open-market P/S intensity" tone={(asNumber(section16Insider.modeled_impact) ?? 0) > 0 ? "positive" : (asNumber(section16Insider.modeled_impact) ?? 0) < 0 ? "negative" : "neutral"} />
+                <MetricCard label="Applied Impact" value={String(section16Insider.applied_impact ?? 0)} meta="Recommendations unchanged" tone="neutral" />
+                <MetricCard label="Cluster" value={section16Insider.cluster_flag ? `${String(section16Insider.cluster_insider_count ?? 0)} insiders` : "None"} meta="Frozen 3+/60d rule" tone={section16Insider.cluster_flag ? "positive" : "neutral"} />
+                <MetricCard label="Freshness" value={sentenceCase(section16Insider.freshness_source)} meta={section16Insider.stale_vs_sla ? "Stale vs 2-day SLA" : "XML path available"} tone={section16Insider.stale_vs_sla ? "warning" : "info"} />
+              </div>
+              <div className="border-l-2 border-[var(--accent)] pl-4 text-sm leading-6 text-[var(--muted)]">
+                {String(section16Insider.summary ?? "Section-16 shadow features are unavailable.")}
+              </div>
+              {section16Evidence.length ? (
+                <ul className="grid gap-2 text-sm text-[var(--muted)] md:grid-cols-2">
+                  {section16Evidence.map((item) => <li key={item} className="border-l border-[var(--line-strong)] pl-3">{item}</li>)}
+                </ul>
+              ) : null}
             </div>
           </TerminalPanel>
 

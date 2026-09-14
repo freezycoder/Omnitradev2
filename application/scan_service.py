@@ -48,6 +48,22 @@ def _relative_strength_fields(result: TickerAnalysis) -> dict[str, Any]:
     }
 
 
+def _section16_insider_fields(result: TickerAnalysis) -> dict[str, Any]:
+    view = result.section16_insider_view
+    return {
+        "section16_score": view.score,
+        "section16_status": view.status,
+        "section16_coverage": view.coverage_score,
+        "section16_applied_impact": view.applied_impact,
+        "section16_modeled_impact": view.modeled_impact,
+        "section16_signed_value_usd": view.signed_value_usd,
+        "section16_cluster_flag": view.cluster_flag,
+        "section16_streak_flag": view.streak_flag,
+        "section16_freshness_source": view.freshness_source,
+        "section16_stale_vs_sla": view.stale_vs_sla,
+    }
+
+
 def _earnings_intelligence_fields(result: TickerAnalysis) -> dict[str, Any]:
     view = result.earnings_intelligence_view
     return {
@@ -103,6 +119,7 @@ def _build_market_row(result: TickerAnalysis) -> dict[str, Any]:
         "alternative_signal_coverage": result.alternative_signal_view.coverage_score,
         **_relative_strength_fields(result),
         **_earnings_intelligence_fields(result),
+        **_section16_insider_fields(result),
     }
 
 
@@ -139,6 +156,7 @@ def _build_long_term_row(result: TickerAnalysis) -> dict[str, Any]:
         "alternative_signal_status": result.alternative_signal_view.status,
         **_relative_strength_fields(result),
         **_earnings_intelligence_fields(result),
+        **_section16_insider_fields(result),
         "accounting_quality_score": result.accounting_quality_view.accounting_quality_score,
         "shenanigan_risk_score": result.accounting_quality_view.shenanigan_risk_score,
         "accounting_data_completeness_score": result.accounting_quality_view.accounting_data_completeness_score,
@@ -195,6 +213,7 @@ def _build_short_term_row(result: TickerAnalysis) -> dict[str, Any]:
         "alternative_signal_status": result.alternative_signal_view.status,
         **_relative_strength_fields(result),
         **_earnings_intelligence_fields(result),
+        **_section16_insider_fields(result),
         "accounting_warning": result.short_term_recommendation.accounting_warning,
         "accounting_label": result.accounting_quality_view.label,
         "shenanigan_risk_score": result.accounting_quality_view.shenanigan_risk_score,
