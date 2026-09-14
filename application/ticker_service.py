@@ -34,6 +34,10 @@ from domain.scoring.relative_strength import (
     build_unavailable_relative_strength_view,
     relative_strength_view_from_dict,
 )
+from domain.scoring.industry_group_rs import (
+    IndustryGroupRelativeStrengthView,
+    build_mapped_industry_group_rs_stub,
+)
 from domain.scoring.short_term import (
     ShortTermView,
     apply_earnings_lockout,
@@ -108,6 +112,7 @@ class TickerAnalysis:
     macro_bundle: FredMacroBundle | None
     alternative_signal_view: AlternativeSignalView
     relative_strength_view: RelativeStrengthView
+    industry_group_rs_view: IndustryGroupRelativeStrengthView
     earnings_intelligence_view: EarningsIntelligenceView
     history: pd.DataFrame
     enriched_history: pd.DataFrame
@@ -350,7 +355,59 @@ def enrich_relative_strength_with_latest_scan(
             else None
         ),
     )
+    current_group_view = getattr(analysis, "industry_group_rs_view", None)
+    if current_group_view is not None:
+        analysis.industry_group_rs_view = _industry_group_view_from_scan_row(
+            current_group_view,
+            matching_row,
+        )
     return analysis
+
+
+def _optional_int(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return int(value)
+
+
+def _optional_float(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _industry_group_view_from_scan_row(
+    current: IndustryGroupRelativeStrengthView,
+    matching_row: dict[str, Any],
+) -> IndustryGroupRelativeStrengthView:
+    if matching_row.get("industry_group_id") in {None, ""}:
+        return current
+    return replace(
+        current,
+        status=str(matching_row.get("industry_group_rs_status") or current.status),
+        applied_impact=0,
+        coverage_score=_optional_int(matching_row.get("industry_group_rs_coverage")) or current.coverage_score,
+        group_id=str(matching_row.get("industry_group_id") or current.group_id or "") or current.group_id,
+        group_name=str(matching_row.get("industry_group_name") or current.group_name or "") or current.group_name,
+        constituent_count=_optional_int(matching_row.get("industry_group_constituent_count")) or current.constituent_count,
+        singleton_group=bool(matching_row.get("industry_group_singleton", current.singleton_group)),
+        group_avg_rs_pct=_optional_float(matching_row.get("industry_group_avg_rs_pct")),
+        group_rank=_optional_int(matching_row.get("industry_group_rank")),
+        group_count=_optional_int(matching_row.get("industry_group_count")),
+        group_rank_percentile=_optional_int(matching_row.get("industry_group_rank_percentile")),
+        rank_delta_1w=_optional_int(matching_row.get("industry_group_rank_delta_1w")),
+        rank_delta_1m=_optional_int(matching_row.get("industry_group_rank_delta_1m")),
+        rank_delta_3m=_optional_int(matching_row.get("industry_group_rank_delta_3m")),
+        rank_delta_6m=_optional_int(matching_row.get("industry_group_rank_delta_6m")),
+        rs_ratio=_optional_float(matching_row.get("industry_group_rs_ratio")),
+        rs_momentum=_optional_float(matching_row.get("industry_group_rs_momentum")),
+        rrg_quadrant=(
+            str(matching_row["industry_group_rrg_quadrant"])
+            if matching_row.get("industry_group_rrg_quadrant")
+            else None
+        ),
+        summary=str(matching_row.get("industry_group_rs_summary") or current.summary),
+    )
 
 
 def _build_analysis(
@@ -384,6 +441,7 @@ def _build_analysis(
             sector=sector,
             message="Relative-strength analysis is unavailable for this data source.",
         )
+    industry_group_rs_view = build_mapped_industry_group_rs_stub(ticker)
     if earnings_intelligence_view is None:
         earnings_intelligence_view = build_unavailable_earnings_intelligence_view(
             "Earnings intelligence is unavailable for this data source."
@@ -445,6 +503,7 @@ def _build_analysis(
         macro_bundle=macro_bundle,
         alternative_signal_view=alternative_signal_view,
         relative_strength_view=relative_strength_view,
+        industry_group_rs_view=industry_group_rs_view,
         earnings_intelligence_view=earnings_intelligence_view,
         history=history,
         enriched_history=enriched_history,

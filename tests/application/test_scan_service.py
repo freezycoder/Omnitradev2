@@ -7,12 +7,14 @@ from dataclasses import replace
 from application.scan_service import (
     _assign_relative_strength_percentiles,
     _earnings_intelligence_fields,
+    _industry_group_rs_fields,
     _passes_universe_filters,
     _rank_results,
 )
 from domain.scoring.earnings_intelligence import (
     build_unavailable_earnings_intelligence_view,
 )
+from domain.scoring.industry_group_rs import build_mapped_industry_group_rs_stub
 from domain.scoring.relative_strength import build_unavailable_relative_strength_view
 
 
@@ -90,6 +92,28 @@ def test_scan_exposes_earnings_event_risk_without_applied_impact():
     assert fields["earnings_event_risk"] == "high"
     assert fields["days_to_earnings"] == 2
     assert fields["earnings_intelligence_applied_impact"] == 0
+
+
+def test_industry_group_fields_remain_shadow_only():
+    analysis = SimpleNamespace(
+        ticker="NVDA",
+        industry_group_rs_view=replace(
+            build_mapped_industry_group_rs_stub("NVDA"),
+            status="complete",
+            applied_impact=0,
+            coverage_score=80,
+            group_avg_rs_pct=6.2,
+            group_rank=1,
+            rrg_quadrant="Leading",
+        ),
+    )
+
+    fields = _industry_group_rs_fields(analysis)
+
+    assert fields["industry_group_rs_mode"] == "shadow"
+    assert fields["industry_group_rs_applied_impact"] == 0
+    assert fields["industry_group_id"] == "gics-45301020"
+    assert fields["industry_group_rrg_quadrant"] == "Leading"
 
 
 def test_rank_results_keeps_every_recommendation_tier(monkeypatch):

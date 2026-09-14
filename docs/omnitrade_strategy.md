@@ -161,6 +161,10 @@ chronological validation folds, positive net directional expectancy, and
 average coverage of at least 70%. Passing the gate only makes the factor
 eligible for manual review.
 
+A separate shadow industry-group RS / RRG layer is documented in
+`docs/shadow_industry_group_rs_experiment.md`. It does not change live
+scores, ranking, or recommendations.
+
 ## 8. Earnings-Intelligence Shadow Layer
 
 Every live ticker analysis assembles a point-in-time earnings view from:

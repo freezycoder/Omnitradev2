@@ -103,6 +103,7 @@ class LongTermSignalLogService:
             "news_impact": analysis.long_term_view.news_impact,
             "alternative_signal": asdict(analysis.alternative_signal_view),
             "relative_strength": asdict(analysis.relative_strength_view),
+            "industry_group_relative_strength": asdict(analysis.industry_group_rs_view),
             "earnings_intelligence": asdict(analysis.earnings_intelligence_view),
             "accounting_quality_score": analysis.accounting_quality_view.accounting_quality_score,
             "shenanigan_risk_score": analysis.accounting_quality_view.shenanigan_risk_score,

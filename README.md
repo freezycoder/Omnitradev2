@@ -37,7 +37,9 @@ is zero and they do not change live recommendations.
 Relative strength is also shadow-only. It compares each stock with SPY and its
 sector ETF over 1, 3, 6, and 12 months, then records universe and sector
 percentile ranks during full scans. The benchmark histories are fetched once
-and cached across the scan.
+and cached across the scan. An additional industry-group RS / RRG overlay is
+logged in the same shadow path using a frozen GICS sub-industry proxy; it does
+not change live recommendations or ranking.
 
 Earnings intelligence is shadow-only as well. It combines the last four
 Finnhub EPS surprises with Yahoo Finance consensus estimates and revision
