@@ -43,7 +43,9 @@ and cached across the scan.
 Earnings intelligence is shadow-only as well. It combines the last four
 Finnhub EPS surprises with Yahoo Finance consensus estimates and revision
 counts, the next earnings date, recent guidance headlines, and the observed
-three-session move after the latest SEC earnings filing. Imminent earnings are
+three-session move after the latest SEC earnings filing. Snapshots also
+shadow-log 10/20/60-session excess versus SPY and the sector ETF for PEAD
+calibration; those windows never change live scores. Imminent earnings are
 flagged as event risk, never interpreted as bullish or bearish by themselves.
 
 This product uses the FRED® API but is not endorsed or certified by the

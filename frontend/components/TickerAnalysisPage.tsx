@@ -77,6 +77,23 @@ const relativeStrengthPeriodColumns: DataTableColumn<Row>[] = [
   { key: "sector_excess_pct", header: "Vs sector", align: "right", render: (row) => formatSignedPct(row.sector_excess_pct, 1) }
 ];
 
+const peadEventColumns: DataTableColumn<Row>[] = [
+  { key: "period", header: "Fiscal period" },
+  { key: "event_date", header: "Event date" },
+  { key: "event_date_source", header: "Date source", render: (row) => sentenceCase(row.event_date_source) },
+  { key: "surprise_pct", header: "Surprise", align: "right", render: (row) => formatSignedPct(row.surprise_pct, 1) },
+  { key: "excess_3", header: "3d vs SPY", align: "right", render: (row) => formatSignedPct(row.excess_3, 2) },
+  { key: "excess_10", header: "10d vs SPY", align: "right", render: (row) => formatSignedPct(row.excess_10, 2) },
+  { key: "excess_20", header: "20d vs SPY", align: "right", render: (row) => formatSignedPct(row.excess_20, 2) },
+  { key: "excess_60", header: "60d vs SPY", align: "right", render: (row) => formatSignedPct(row.excess_60, 2) }
+];
+
+function peadHorizonExcess(event: Row, sessions: number): number | null {
+  const horizon = pickArray(event.horizons).find((row) => asNumber(row.sessions) === sessions);
+  if (!horizon || horizon.complete !== true) return null;
+  return asNumber(horizon.market_excess_pct);
+}
+
 const earningsQuarterColumns: DataTableColumn<Row>[] = [
   { key: "period", header: "Fiscal period" },
   { key: "fiscal_quarter", header: "Quarter", render: (row) => row.fiscal_quarter ? `Q${String(row.fiscal_quarter)} ${String(row.fiscal_year ?? "")}` : "N/A" },
@@ -200,6 +217,13 @@ export function TickerAnalysisPage() {
   const earningsWarnings = Array.isArray(earningsIntelligence.warnings)
     ? earningsIntelligence.warnings.map((item) => String(item))
     : [];
+  const peadEvents = pickArray(earningsIntelligence.event_drift).map((event) => ({
+    ...event,
+    excess_3: peadHorizonExcess(event, 3),
+    excess_10: peadHorizonExcess(event, 10),
+    excess_20: peadHorizonExcess(event, 20),
+    excess_60: peadHorizonExcess(event, 60)
+  }));
   const etfExposure = pickRecord(data?.etf_exposure);
   const etfExposureRows = pickArray(etfExposure.etfs);
   const alternativeComponents = pickArray(alternativeSignal.components);
@@ -446,6 +470,8 @@ export function TickerAnalysisPage() {
                 {String(earningsIntelligence.summary ?? "Earnings intelligence is unavailable.")}
               </div>
               <DataTable rows={earningsQuarters} columns={earningsQuarterColumns} emptyLabel="No resolved earnings quarters are available." />
+              <div className="text-xs uppercase tracking-[0.14em] text-[var(--dim)]">PEAD shadow windows · research only · zero live score impact</div>
+              <DataTable rows={peadEvents} columns={peadEventColumns} emptyLabel="Post-event 10/20/60 session excess will appear after the next live earnings snapshot." />
               {earningsEvidence.length ? (
                 <ul className="grid gap-2 text-sm text-[var(--muted)] md:grid-cols-2">
                   {earningsEvidence.map((item) => <li key={item} className="border-l border-[var(--line-strong)] pl-3">{item}</li>)}
