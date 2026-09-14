@@ -60,6 +60,9 @@ data_store/scan_cache/*
 !data_store/ticker_cache/
 data_store/ticker_cache/*
 !data_store/ticker_cache/.gitkeep
+!data_store/section16_cache/
+data_store/section16_cache/*
+!data_store/section16_cache/.gitkeep
 *.db
 *.sqlite
 *.sqlite3

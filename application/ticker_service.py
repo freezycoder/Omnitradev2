@@ -34,6 +34,10 @@ from domain.scoring.relative_strength import (
     build_unavailable_relative_strength_view,
     relative_strength_view_from_dict,
 )
+from domain.scoring.section16_insider import (
+    Section16InsiderView,
+    build_unavailable_section16_insider_view,
+)
 from domain.scoring.short_term import (
     ShortTermView,
     apply_earnings_lockout,
@@ -41,6 +45,7 @@ from domain.scoring.short_term import (
     build_short_term_view,
 )
 from domain.technical.indicators import add_technical_indicators
+from application.section16_shadow_service import Section16ShadowService
 from providers.events.sec_edgar_client import (
     SecEventBundle,
     build_sec_edgar_client,
@@ -109,6 +114,7 @@ class TickerAnalysis:
     alternative_signal_view: AlternativeSignalView
     relative_strength_view: RelativeStrengthView
     earnings_intelligence_view: EarningsIntelligenceView
+    section16_insider_view: Section16InsiderView
     history: pd.DataFrame
     enriched_history: pd.DataFrame
     snapshot: dict[str, float | None]
@@ -388,6 +394,23 @@ def _build_analysis(
         earnings_intelligence_view = build_unavailable_earnings_intelligence_view(
             "Earnings intelligence is unavailable for this data source."
         )
+    as_of = None
+    if not history.empty:
+        try:
+            as_of = pd.Timestamp(history.index.max()).date().isoformat()
+        except (TypeError, ValueError):
+            as_of = None
+    try:
+        section16_insider_view = Section16ShadowService().view_for_ticker(
+            ticker,
+            as_of=as_of,
+            sec_bundle=sec_event_bundle,
+        )
+    except Exception:
+        _log.info("Section-16 shadow view failed for %s.", ticker, exc_info=True)
+        section16_insider_view = build_unavailable_section16_insider_view(
+            "Section-16 shadow features are unavailable for this ticker."
+        )
     news_items = build_news_items(
         recent_news,
         ticker=ticker,
@@ -446,6 +469,7 @@ def _build_analysis(
         alternative_signal_view=alternative_signal_view,
         relative_strength_view=relative_strength_view,
         earnings_intelligence_view=earnings_intelligence_view,
+        section16_insider_view=section16_insider_view,
         history=history,
         enriched_history=enriched_history,
         snapshot=snapshot,

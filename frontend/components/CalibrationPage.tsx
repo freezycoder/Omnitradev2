@@ -132,6 +132,18 @@ export function CalibrationPage() {
     };
   });
   const positiveEarningsFolds = pickArray(earningsIntelligenceAnalysis.validation_folds).filter((row) => row.positive === true).length;
+  const section16Analysis = pickRecord(data?.section16_insider_analysis);
+  const section16Cohorts = pickArray(section16Analysis.cohorts);
+  const section16Requirements = Object.entries(pickRecord(section16Analysis.requirements)).map(([key, value]) => {
+    const requirement = pickRecord(value);
+    return {
+      requirement: sentenceCase(key),
+      required: requirement.required,
+      current: requirement.current,
+      status: requirement.passed ? "Passed" : "Pending"
+    };
+  });
+  const positiveSection16Folds = pickArray(section16Analysis.validation_folds).filter((row) => row.positive === true).length;
 
   const scoreChartRows = scoreBuckets.map((row) => ({
     bucket: String(row.score_bucket ?? "N/A"),
@@ -258,6 +270,35 @@ export function CalibrationPage() {
                   rows={earningsIntelligenceCohorts}
                   columns={calibrationColumns("earnings_intelligence_band")}
                   emptyLabel="Earnings-intelligence cohorts will appear after the new signals resolve."
+                />
+              </div>
+            </div>
+          </TerminalPanel>
+
+          <TerminalPanel title="Section-16 insider activation gate" eyebrow="Open-market P/S + frozen 3+/60d clusters · shadow only · SEC primary">
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard label="Directional Sample" value={String(section16Analysis.directional_resolved_signals ?? 0)} meta="Resolved non-neutral open-market signals" tone="info" />
+                <MetricCard label="Directional Net Exp." value={formatPct(section16Analysis.directional_net_expectancy_pct, 2)} meta="Intensity-aligned after modeled costs" tone={(asNumber(section16Analysis.directional_net_expectancy_pct) ?? 0) > 0 ? "positive" : "warning"} />
+                <MetricCard label="Positive Folds" value={String(positiveSection16Folds)} meta="Chronological validation blocks" tone={positiveSection16Folds >= 2 ? "positive" : "warning"} />
+                <MetricCard label="Activation" value={section16Analysis.activation_ready ? "Review Ready" : "Locked"} meta="Never activates automatically" tone={section16Analysis.activation_ready ? "positive" : "warning"} />
+              </div>
+              <DiagnosticCard diagnostic={pickRecord(section16Analysis.diagnostic)} />
+              <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+                <DataTable
+                  rows={section16Requirements}
+                  columns={[
+                    { key: "requirement", header: "Evidence gate", render: (row) => <span className="font-semibold text-white">{String(row.requirement)}</span> },
+                    { key: "required", header: "Required", align: "right" },
+                    { key: "current", header: "Current", align: "right" },
+                    { key: "status", header: "Status", render: (row) => <StatusBadge tone={row.status === "Passed" ? "positive" : "warning"}>{String(row.status)}</StatusBadge> }
+                  ]}
+                  emptyLabel="No Section-16 activation requirements are available."
+                />
+                <DataTable
+                  rows={section16Cohorts}
+                  columns={calibrationColumns("section16_band")}
+                  emptyLabel="Section-16 cohorts will appear after shadow observations resolve."
                 />
               </div>
             </div>

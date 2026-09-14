@@ -125,3 +125,21 @@ def render_calibration_page(calibration_results: dict) -> None:
         )
     else:
         st.info("No threshold-filter comparison is available yet.")
+
+    render_rank_sheet_header("Section-16 Insider Shadow Gate")
+    st.caption("Open-market P/S intensity and frozen 3+/60d clusters. Shadow-only: applied impact stays 0 and live ranking does not change.")
+    section16 = calibration_results.get("section16_insider_analysis", {})
+    if section16:
+        diagnostic = section16.get("diagnostic", {})
+        st.write(diagnostic.get("summary", "Section-16 remains shadow-only."))
+        st.caption(
+            f"Activation {'ready for review' if section16.get('activation_ready') else 'locked'} · "
+            f"primary source {section16.get('primary_source', 'sec')} · applied impact always 0."
+        )
+        cohorts = section16.get("cohorts", [])
+        if cohorts:
+            st.dataframe(cohorts, use_container_width=True, hide_index=True)
+        else:
+            st.info("No resolved Section-16 shadow observations are available yet.")
+    else:
+        st.info("Section-16 shadow calibration has not been logged yet.")
