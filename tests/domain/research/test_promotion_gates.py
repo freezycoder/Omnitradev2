@@ -189,7 +189,7 @@ def test_human_authorization_still_fails_while_live_switch_is_off() -> None:
             live_promotion_enabled=False,
         )
     assert "readiness cannot enable live execution" in str(blocked.value).lower()
-    assert derive_lifecycle_label(replace(candidate, human_authorized=True)) is LifecycleLabel.UNVERIFIED
+    assert derive_lifecycle_label(replace(candidate, human_authorized=True)) is LifecycleLabel.PAPER
 
 
 def test_spoofed_real_label_does_not_authorize_a_live_write() -> None:
