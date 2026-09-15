@@ -11,7 +11,7 @@ import { SectionHeader } from "@/components/SectionHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { TerminalPanel } from "@/components/TerminalPanel";
 import { CalibrationPayload, fetchCalibration } from "@/lib/api";
-import { asNumber, formatPct, pickArray, pickRecord, sentenceCase } from "@/lib/format";
+import { asNumber, formatPct, formatSignedPct, pickArray, pickRecord, sentenceCase } from "@/lib/format";
 
 type Row = Record<string, unknown>;
 
@@ -132,6 +132,13 @@ export function CalibrationPage() {
     };
   });
   const positiveEarningsFolds = pickArray(earningsIntelligenceAnalysis.validation_folds).filter((row) => row.positive === true).length;
+  const sc13dExperiment = pickRecord(data?.sc13d_activist_experiment);
+  const sc13dQuality = pickRecord(sc13dExperiment.data_quality);
+  const sc13dStudy = pickRecord(sc13dExperiment.event_study);
+  const sc13dWindows = pickArray(sc13dStudy.post_windows);
+  const sc13dFolds = pickArray(sc13dExperiment.walk_forward_folds);
+  const sc13dVerdict = String(sc13dExperiment.verdict ?? "INCONCLUSIVE");
+  const sc13dTone = sc13dVerdict === "SUCCESS" ? "positive" : sc13dVerdict === "FAIL" ? "negative" : "warning";
 
   const scoreChartRows = scoreBuckets.map((row) => ({
     bucket: String(row.score_bucket ?? "N/A"),
@@ -258,6 +265,54 @@ export function CalibrationPage() {
                   rows={earningsIntelligenceCohorts}
                   columns={calibrationColumns("earnings_intelligence_band")}
                   emptyLabel="Earnings-intelligence cohorts will appear after the new signals resolve."
+                />
+              </div>
+            </div>
+          </TerminalPanel>
+
+          <TerminalPanel title="SC 13D activist shadow experiment" eyebrow="Pre-registered · post-file CAR · no live scoring">
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard label="Verdict" value={String(sc13dExperiment.verdict_status ?? sc13dExperiment.status ?? "Not run")} meta="Never changes live recommendations" tone={sc13dTone} />
+                <MetricCard label="Activist N" value={String(sc13dQuality.activist_complete_primary_window ?? 0)} meta="Complete CAR(0,+5) window" tone="info" />
+                <MetricCard label="Positive folds" value={String(sc13dExperiment.positive_folds ?? 0)} meta="Need 2 walk-forward folds" tone={(asNumber(sc13dExperiment.positive_folds) ?? 0) >= 2 ? "positive" : "warning"} />
+                <MetricCard label="Applied impact" value="0" meta="Shadow log only" tone="neutral" />
+              </div>
+              <div className="border-l-2 border-[var(--accent)] pl-4 text-sm leading-6 text-[var(--muted)]">
+                {String(sc13dExperiment.summary ?? "Run scripts/run_sc13d_shadow.py to evaluate activist 13D CARs. Live recommendations stay unchanged.")}
+              </div>
+              <div className="grid gap-5 xl:grid-cols-2">
+                <DataTable
+                  rows={sc13dWindows}
+                  columns={[
+                    { key: "window", header: "Window", render: (row) => <span className="font-semibold text-white">{String(row.window)}</span> },
+                    { key: "n", header: "N", align: "right" },
+                    { key: "mean_pct", header: "Mean SPY CAR", align: "right", render: (row) => formatSignedPct(row.mean_pct, 2) },
+                    {
+                      key: "significant_positive",
+                      header: "Significant +",
+                      render: (row) => <StatusBadge tone={row.significant_positive === true ? "positive" : "warning"}>{row.significant_positive === true ? "Yes" : "No"}</StatusBadge>
+                    }
+                  ]}
+                  emptyLabel="Post-file CAR windows appear after the shadow experiment is run."
+                />
+                <DataTable
+                  rows={sc13dFolds}
+                  columns={[
+                    { key: "fold", header: "Fold", render: (row) => <span className="font-semibold text-white">{String(row.fold)}</span> },
+                    { key: "observations", header: "OOS N", align: "right" },
+                    {
+                      key: "passed",
+                      header: "Passed",
+                      render: (row) => <StatusBadge tone={row.passed === true ? "positive" : "warning"}>{row.passed === true ? "Yes" : "No"}</StatusBadge>
+                    },
+                    {
+                      key: "fully_anticipated",
+                      header: "Run-up only",
+                      render: (row) => String(row.fully_anticipated === true ? "Yes" : "No")
+                    }
+                  ]}
+                  emptyLabel="Walk-forward folds appear after the shadow experiment is run."
                 />
               </div>
             </div>

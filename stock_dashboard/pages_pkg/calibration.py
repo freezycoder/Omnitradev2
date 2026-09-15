@@ -125,3 +125,35 @@ def render_calibration_page(calibration_results: dict) -> None:
         )
     else:
         st.info("No threshold-filter comparison is available yet.")
+
+    render_rank_sheet_header("SC 13D Activist Shadow Experiment")
+    st.caption(
+        "Pre-registered activist 13D/A CARs versus SPY. Shadow-only: applied impact stays 0 "
+        "and live ranking does not change."
+    )
+    sc13d = calibration_results.get("sc13d_activist_experiment", {})
+    if sc13d:
+        diagnostic = sc13d.get("diagnostic", {})
+        st.write(diagnostic.get("summary", sc13d.get("summary", "SC 13D remains shadow-only.")))
+        st.caption(
+            f"Verdict {sc13d.get('verdict', 'INCONCLUSIVE')} · "
+            f"applied impact always {sc13d.get('applied_impact', 0)} · "
+            "no live recommendation changes."
+        )
+        quality = sc13d.get("data_quality") or {}
+        if quality:
+            st.write(
+                {
+                    "Activist N": quality.get("activist_complete_primary_window"),
+                    "Passive excluded": (sc13d.get("filters") or {}).get("passive_excluded"),
+                    "Financing excluded": (sc13d.get("filters") or {}).get("financing_excluded"),
+                    "Positive folds": sc13d.get("positive_folds"),
+                }
+            )
+        windows = (sc13d.get("event_study") or {}).get("post_windows") or []
+        if windows:
+            st.dataframe(windows, use_container_width=True, hide_index=True)
+        else:
+            st.info("No SC 13D shadow evaluation is cached yet. Run scripts/run_sc13d_shadow.py.")
+    else:
+        st.info("SC 13D activist shadow calibration has not been logged yet.")
