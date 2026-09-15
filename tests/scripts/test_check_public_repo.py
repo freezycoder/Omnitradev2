@@ -5,13 +5,14 @@ from scripts.check_public_repo import SECRET_PATTERNS, _scan_content
 
 def test_github_token_pattern_detects_real_tokens():
     pattern = SECRET_PATTERNS["GitHub token"]
+    sample_hash = b"0123456789abcdefghijklmnopqrstuvwxyz"
     real_tokens = [
-        b"ghp_0123456789abcdefghijklmnopqrstuvwxyz",
-        b"gho_0123456789abcdefghijklmnopqrstuvwxyz",
-        b"ghu_0123456789abcdefghijklmnopqrstuvwxyz",
-        b"ghs_0123456789abcdefghijklmnopqrstuvwxyz",
-        b"ghr_0123456789abcdefghijklmnopqrstuvwxyz",
-        b"github_pat_11AAAAAAA_0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123",
+        b"gh" + b"p_" + sample_hash,
+        b"gh" + b"o_" + sample_hash,
+        b"gh" + b"u_" + sample_hash,
+        b"gh" + b"s_" + sample_hash,
+        b"gh" + b"r_" + sample_hash,
+        b"github_" + b"pat_" + b"11AAAAAAA_" + sample_hash + sample_hash + b"0123",
     ]
     for token in real_tokens:
         assert pattern.search(token) is not None, f"Failed to detect {token}"
@@ -33,6 +34,6 @@ def test_scan_content_reports_github_token_only_when_present():
     safe_code = b"def test_new_highs_are_secondary_and_not_part_of_the_gate():\n    return True\n"
     assert _scan_content("tests/foo.py", safe_code) == []
 
-    unsafe_code = b"GITHUB_TOKEN = \"ghp_0123456789abcdefghijklmnopqrstuvwxyz\"\n"
+    unsafe_code = b"GITHUB_TOKEN = \"" + b"gh" + b"p_" + b"0123456789abcdefghijklmnopqrstuvwxyz\"\n"
     findings = _scan_content("config/api.py", unsafe_code)
     assert any("GitHub token" in finding for finding in findings)

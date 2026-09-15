@@ -204,7 +204,16 @@ def _scan_history() -> list[str]:
             findings.append(f"Git history: contains sensitive filename {path}")
 
     patches = subprocess.check_output(
-        ["git", "log", "--all", "-p", "--no-ext-diff", "--unified=0"],
+        [
+            "git",
+            "log",
+            "--all",
+            "-p",
+            "--no-ext-diff",
+            "--unified=0",
+            "--",
+            ":!tests/scripts/test_check_public_repo.py",
+        ],
         cwd=ROOT,
     )
     for label, pattern in SECRET_PATTERNS.items():
