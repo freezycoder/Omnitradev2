@@ -204,6 +204,31 @@ class OutcomeRepository:
         with connection_scope(self._db_path) as connection:
             return connection.execute(query).fetchall()
 
+    def list_long_term_screen_observations(self) -> list[sqlite3.Row]:
+        """Return resolved long-term screen rows for shadow regime-gate research."""
+        query = """
+            SELECT
+                s.signal_id,
+                s.ticker,
+                s.strategy_family,
+                s.score,
+                s.recommendation_label,
+                s.recommendation_confidence,
+                s.setup_type,
+                s.feature_snapshot_json,
+                s.source_quality,
+                s.created_at,
+                o.realized_return_pct,
+                o.evaluated_at
+            FROM signal_outcomes o
+            JOIN signals s ON s.signal_id = o.signal_id
+            WHERE s.strategy_family IN ('long_term_3m', 'long_term_6m', 'long_term_12m')
+              AND o.realized_return_pct IS NOT NULL
+            ORDER BY s.created_at ASC, o.evaluated_at ASC, s.ticker ASC
+        """
+        with connection_scope(self._db_path) as connection:
+            return connection.execute(query).fetchall()
+
     def get_resolved_stats_by_edge_segment(
         self,
         strategy_family: str | None = None,
