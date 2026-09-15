@@ -38,7 +38,10 @@ onto live recommendations. See `docs/research_promotion_gates.md`.
 Relative strength is also shadow-only. It compares each stock with SPY and its
 sector ETF over 1, 3, 6, and 12 months, then records universe and sector
 percentile ranks during full scans. The benchmark histories are fetched once
-and cached across the scan.
+and cached across the scan. A separate universe-participation panel (A/D,
+% above 20/50/200 DMA, SPY versus equal-weight) is documented as a
+**shadow regime gate** in `docs/experiments/market_breadth_regime_gate.md`;
+it does not change live recommendations.
 
 Earnings intelligence is shadow-only as well. It combines the last four
 Finnhub EPS surprises with Yahoo Finance consensus estimates and revision
