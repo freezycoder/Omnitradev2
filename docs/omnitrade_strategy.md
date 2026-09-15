@@ -126,6 +126,10 @@ after costs, two positive chronological validation folds, and average coverage
 of at least 70%. Passing those gates only makes the overlay eligible for manual
 review; it never activates itself.
 
+A separate shadow packet (`credit-gate-v1`) ingests FRED ICE BofA HY/IG OAS as a
+regime throttle for long-biased screens. `applied_impact` stays `0`. See
+`docs/experiments/credit_hy_oas_regime_gate.md`.
+
 ## 7. Relative-Strength Shadow Layer
 
 Every live ticker analysis compares the stock with:
