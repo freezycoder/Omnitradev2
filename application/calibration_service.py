@@ -6,6 +6,7 @@ from typing import Any
 
 from application.calibration_research_service import CalibrationResearchService
 from application.performance_lab_service import PerformanceLabService
+from application.sc13d_shadow_service import Sc13dShadowService
 from config.performance import (
     COMMISSION_PER_TRADE,
     COST_FILTER_ENABLED,
@@ -89,6 +90,7 @@ class CalibrationService:
         alternative_signal_analysis = self.get_alternative_signal_analysis()
         relative_strength_analysis = self.get_relative_strength_analysis()
         earnings_intelligence_analysis = self.get_earnings_intelligence_analysis()
+        sc13d_activist_experiment = Sc13dShadowService().calibration_payload()
         active_thresholds = self.get_active_thresholds()
         payload = {
             "summary": {
@@ -108,6 +110,7 @@ class CalibrationService:
             "alternative_signal_analysis": alternative_signal_analysis,
             "relative_strength_analysis": relative_strength_analysis,
             "earnings_intelligence_analysis": earnings_intelligence_analysis,
+            "sc13d_activist_experiment": sc13d_activist_experiment,
             "edge_filter": self._performance_lab_service.get_edge_filter_payload(),
             "research_calibration": CalibrationResearchService(
                 outcome_repository=self._outcome_repository,
@@ -131,6 +134,7 @@ class CalibrationService:
                 "alternative_signal_validation": alternative_signal_analysis["diagnostic"],
                 "relative_strength_validation": relative_strength_analysis["diagnostic"],
                 "earnings_intelligence_validation": earnings_intelligence_analysis["diagnostic"],
+                "sc13d_activist_experiment": sc13d_activist_experiment["diagnostic"],
             },
         }
         return payload
