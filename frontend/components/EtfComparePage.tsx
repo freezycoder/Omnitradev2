@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { DataTable, etfHref } from "@/components/DataTable";
+import { DataTable, DataTableColumn, etfHref } from "@/components/DataTable";
 import { EtfTabs } from "@/components/EtfTabs";
 import { LoadingState } from "@/components/LoadingState";
 import { MetricCard } from "@/components/MetricCard";
@@ -11,6 +11,17 @@ import { fetchEtfCompare } from "@/lib/api";
 import { formatAvailable, formatLargeNumber, formatPct, formatSignedPct, pickArray, pickRecord } from "@/lib/format";
 
 type Row = Record<string, unknown>;
+
+const snapshotColumns: DataTableColumn<Row>[] = [
+  { key: "ticker", header: "Ticker", render: (row) => <a className="font-semibold text-white" href={etfHref(String(row.ticker ?? ""))}>{String(row.ticker ?? "")}</a> },
+  { key: "name", header: "Name", render: (row) => String(row.name ?? "Data unavailable") },
+  { key: "expense_ratio", header: "Expense", align: "right", render: (row) => formatAvailable(row.expense_ratio, (value) => formatPct(value > 1 ? value : value * 100, 2)) },
+  { key: "aum", header: "AUM", align: "right", render: (row) => formatAvailable(row.aum, (value) => formatLargeNumber(value)) },
+  { key: "return_1y", header: "1Y", align: "right", render: (row) => formatAvailable(row.return_1y, (value) => formatSignedPct(value, 2)) },
+  { key: "volatility", header: "Vol", align: "right", render: (row) => formatAvailable(row.volatility, (value) => formatPct(value, 1)) },
+  { key: "drawdown", header: "Drawdown", align: "right", render: (row) => formatAvailable(row.drawdown, (value) => formatPct(value, 1)) },
+  { key: "omni", header: "OmniScore", align: "right", render: (row) => formatAvailable(row.omni, (value) => value.toFixed(1)) }
+];
 
 export function EtfComparePage() {
   const [symbols, setSymbols] = useState("QQQ,SPY");
@@ -53,8 +64,8 @@ export function EtfComparePage() {
       {loading ? <LoadingState title="Comparison" message="Calculating overlap from cached holdings" /> : null}
       {etfs.length ? (
         <TerminalPanel title="Fund snapshot">
-          <DataTable
-            rows={etfs.map((row) => {
+          <DataTable<Row>
+            rows={etfs.map((row): Row => {
               const profile = pickRecord(row.profile);
               const metrics = pickRecord(row.metrics);
               return {
@@ -66,16 +77,7 @@ export function EtfComparePage() {
                 drawdown: metrics.maximum_drawdown
               };
             })}
-            columns={[
-              { key: "ticker", header: "Ticker", render: (row) => <a className="font-semibold text-white" href={etfHref(String(row.ticker ?? ""))}>{String(row.ticker ?? "")}</a> },
-              { key: "name", header: "Name", render: (row) => String(row.name ?? "Data unavailable") },
-              { key: "expense_ratio", header: "Expense", align: "right", render: (row) => formatAvailable(row.expense_ratio, (value) => formatPct(value > 1 ? value : value * 100, 2)) },
-              { key: "aum", header: "AUM", align: "right", render: (row) => formatAvailable(row.aum, (value) => formatLargeNumber(value)) },
-              { key: "return_1y", header: "1Y", align: "right", render: (row) => formatAvailable(row.return_1y, (value) => formatSignedPct(value, 2)) },
-              { key: "volatility", header: "Vol", align: "right", render: (row) => formatAvailable(row.volatility, (value) => formatPct(value, 1)) },
-              { key: "drawdown", header: "Drawdown", align: "right", render: (row) => formatAvailable(row.drawdown, (value) => formatPct(value, 1)) },
-              { key: "omni", header: "OmniScore", align: "right", render: (row) => formatAvailable(row.omni, (value) => value.toFixed(1)) }
-            ]}
+            columns={snapshotColumns}
             emptyLabel="Data unavailable"
           />
         </TerminalPanel>
