@@ -13,7 +13,12 @@ from application.signal_log_service import SignalLogService
 from application.ticker_service import TickerAnalysis, build_ticker_analysis
 from config.settings import ALLOW_DEMO_FALLBACK, DATA_MODE_AUTO, DATA_MODE_DEMO, DATA_MODE_LIVE
 from config.universe import DEFAULT_STOCK_UNIVERSE, DEFAULT_UNIVERSE_NAME, universe_filters_for_ticker
+from domain.scoring.industry_group_rs import (
+    assign_industry_group_relative_strength,
+    build_unavailable_industry_group_rs_view,
+)
 from domain.signals.freshness import apply_scan_freshness_policy
+from providers.market.benchmark_provider import SECTOR_ETF_BY_SECTOR, load_relative_strength_benchmarks
 from storage.repositories.scan_repository import load_named_scan_cache, save_latest_view_scan, save_named_scan_cache
 
 
@@ -47,6 +52,39 @@ def _relative_strength_fields(result: TickerAnalysis) -> dict[str, Any]:
         "sector_benchmark_symbol": view.sector_benchmark_symbol,
         "market_excess_6m_pct": six_month.market_excess_pct if six_month else None,
         "sector_excess_6m_pct": six_month.sector_excess_pct if six_month else None,
+    }
+
+
+def _industry_group_rs_fields(result: TickerAnalysis) -> dict[str, Any]:
+    view = getattr(result, "industry_group_rs_view", None)
+    if view is None:
+        view = build_unavailable_industry_group_rs_view(
+            ticker=result.ticker,
+            message="Industry-group relative strength was not assigned for this row.",
+        )
+    return {
+        "industry_group_rs_mode": view.mode,
+        "industry_group_rs_status": view.status,
+        "industry_group_rs_applied_impact": view.applied_impact,
+        "industry_group_rs_coverage": view.coverage_score,
+        "industry_group_rs_map_version": view.map_version,
+        "industry_group_taxonomy": view.taxonomy,
+        "industry_group_id": view.group_id,
+        "industry_group_name": view.group_name,
+        "industry_group_constituent_count": view.constituent_count,
+        "industry_group_singleton": view.singleton_group,
+        "industry_group_avg_rs_pct": view.group_avg_rs_pct,
+        "industry_group_rank": view.group_rank,
+        "industry_group_count": view.group_count,
+        "industry_group_rank_percentile": view.group_rank_percentile,
+        "industry_group_rank_delta_1w": view.rank_delta_1w,
+        "industry_group_rank_delta_1m": view.rank_delta_1m,
+        "industry_group_rank_delta_3m": view.rank_delta_3m,
+        "industry_group_rank_delta_6m": view.rank_delta_6m,
+        "industry_group_rs_ratio": view.rs_ratio,
+        "industry_group_rs_momentum": view.rs_momentum,
+        "industry_group_rrg_quadrant": view.rrg_quadrant,
+        "industry_group_rs_summary": view.summary,
     }
 
 
@@ -108,6 +146,7 @@ def _build_market_row(result: TickerAnalysis) -> dict[str, Any]:
         "alternative_signal_lifecycle": result.alternative_signal_view.lifecycle_label,
         "alternative_signal_lifecycle_stage": result.alternative_signal_view.lifecycle_stage,
         **_relative_strength_fields(result),
+        **_industry_group_rs_fields(result),
         **_earnings_intelligence_fields(result),
     }
 
@@ -146,6 +185,7 @@ def _build_long_term_row(result: TickerAnalysis) -> dict[str, Any]:
         "alternative_signal_lifecycle": result.alternative_signal_view.lifecycle_label,
         "alternative_signal_lifecycle_stage": result.alternative_signal_view.lifecycle_stage,
         **_relative_strength_fields(result),
+        **_industry_group_rs_fields(result),
         **_earnings_intelligence_fields(result),
         "accounting_quality_score": result.accounting_quality_view.accounting_quality_score,
         "shenanigan_risk_score": result.accounting_quality_view.shenanigan_risk_score,
@@ -204,6 +244,7 @@ def _build_short_term_row(result: TickerAnalysis) -> dict[str, Any]:
         "alternative_signal_lifecycle": result.alternative_signal_view.lifecycle_label,
         "alternative_signal_lifecycle_stage": result.alternative_signal_view.lifecycle_stage,
         **_relative_strength_fields(result),
+        **_industry_group_rs_fields(result),
         **_earnings_intelligence_fields(result),
         "accounting_warning": result.short_term_recommendation.accounting_warning,
         "accounting_label": result.accounting_quality_view.label,
@@ -405,6 +446,61 @@ def _assign_relative_strength_percentiles(results: list[TickerAnalysis]) -> None
         )
 
 
+def _assign_industry_group_relative_strength_for_scan(results: list[TickerAnalysis]) -> dict[str, Any]:
+    if not results:
+        return {}
+    market_history = None
+    sector_histories: dict[str, Any] = {}
+    has_name_rs = any(
+        getattr(getattr(result, "relative_strength_view", None), "raw_strength_pct", None) is not None
+        for result in results
+    )
+    if has_name_rs:
+        try:
+            market_bundle = load_relative_strength_benchmarks("Technology")
+            market_history = market_bundle.market_history
+            for sector in {result.sector for result in results if result.sector in SECTOR_ETF_BY_SECTOR}:
+                bundle = load_relative_strength_benchmarks(sector)
+                if not bundle.sector_history.empty:
+                    sector_histories[sector] = bundle.sector_history
+        except Exception:
+            _log.warning(
+                "Industry-group RS benchmark histories were unavailable; rank deltas and RRG may be omitted.",
+                exc_info=True,
+            )
+    return assign_industry_group_relative_strength(
+        results,
+        market_history=market_history,
+        sector_histories=sector_histories,
+    )
+
+
+def _shadow_industry_group_rs_summary(market_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    mapped = [row for row in market_rows if row.get("industry_group_id")]
+    applied_impacts = {
+        int(row["industry_group_rs_applied_impact"])
+        for row in mapped
+        if isinstance(row.get("industry_group_rs_applied_impact"), (int, float))
+    }
+    groups = {str(row["industry_group_id"]) for row in mapped}
+    singletons = sum(1 for row in mapped if row.get("industry_group_singleton"))
+    return {
+        "mode": "shadow",
+        "live_ranking_changed": False,
+        "applied_impact_always_zero": applied_impacts <= {0} or not applied_impacts,
+        "mapped_rows": len(mapped),
+        "group_count": len(groups),
+        "singleton_rows": singletons,
+        "rrg_quadrants": sorted(
+            {
+                str(row["industry_group_rrg_quadrant"])
+                for row in mapped
+                if row.get("industry_group_rrg_quadrant")
+            }
+        ),
+    }
+
+
 def _build_scan_payload(
     source: str,
     tickers: list[str],
@@ -427,6 +523,7 @@ def _build_scan_payload(
         "short_term": short_rows,
         "market_rows": market_rows,
         "failures": failures,
+        "shadow_industry_group_rs": _shadow_industry_group_rs_summary(market_rows),
     }
     if message:
         payload["message"] = message
@@ -496,6 +593,7 @@ def _run_scan_for_mode(tickers: list[str], data_mode: str) -> tuple[list[TickerA
     indexed_results.sort(key=lambda pair: pair[0])
     results = [analysis for _, analysis in indexed_results]
     _assign_relative_strength_percentiles(results)
+    _assign_industry_group_relative_strength_for_scan(results)
     return results, failures
 
 
