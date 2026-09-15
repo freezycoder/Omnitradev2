@@ -6,6 +6,13 @@ from typing import Any, Sequence
 
 import pandas as pd
 
+from domain.research.lifecycle import (
+    EXPERIMENT_EARNINGS_INTELLIGENCE,
+    EXPERIMENT_PEAD,
+    LifecycleLabel,
+    LifecycleStage,
+)
+from domain.research.promotion import instantiate_sealed_shadow_view
 from providers.events.sec_edgar_client import SecEventBundle
 from providers.news.news_provider import NewsItem
 
@@ -55,6 +62,13 @@ class EarningsIntelligenceView:
     warnings: list[str] = field(default_factory=list)
     as_of_date: str | None = None
     updated_at: str | None = None
+    lifecycle_label: str = LifecycleLabel.UNVERIFIED.value
+    lifecycle_stage: str = LifecycleStage.CANDIDATE.value
+    experiment_ids: tuple[str, ...] = (
+        EXPERIMENT_EARNINGS_INTELLIGENCE,
+        EXPERIMENT_PEAD,
+    )
+    promotion_receipts: tuple[dict[str, Any], ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -427,6 +441,9 @@ def build_earnings_intelligence_view(
         warnings=list(dict.fromkeys(warnings)),
         as_of_date=as_of_date.isoformat(),
         updated_at=datetime.now(UTC).isoformat(),
+        lifecycle_label=LifecycleLabel.UNVERIFIED.value,
+        lifecycle_stage=LifecycleStage.CANDIDATE.value,
+        experiment_ids=(EXPERIMENT_EARNINGS_INTELLIGENCE, EXPERIMENT_PEAD),
     )
 
 
@@ -462,6 +479,9 @@ def build_unavailable_earnings_intelligence_view(
         summary=message,
         warnings=[message],
         updated_at=datetime.now(UTC).isoformat(),
+        lifecycle_label=LifecycleLabel.UNVERIFIED.value,
+        lifecycle_stage=LifecycleStage.CANDIDATE.value,
+        experiment_ids=(EXPERIMENT_EARNINGS_INTELLIGENCE, EXPERIMENT_PEAD),
     )
 
 
@@ -474,13 +494,23 @@ def earnings_intelligence_view_from_dict(
         )
     quarter_rows = payload.get("quarters")
     quarters = [
-        EarningsQuarter(**row)
+        EarningsQuarter(
+            **{
+                key: value
+                for key, value in row.items()
+                if key in EarningsQuarter.__dataclass_fields__
+            }
+        )
         for row in quarter_rows or []
         if isinstance(row, dict)
     ]
     values = dict(payload)
     values["quarters"] = quarters
-    return EarningsIntelligenceView(**values)
+    return instantiate_sealed_shadow_view(
+        EarningsIntelligenceView,
+        values,
+        experiment_ids=(EXPERIMENT_EARNINGS_INTELLIGENCE, EXPERIMENT_PEAD),
+    )
 
 
 __all__ = [

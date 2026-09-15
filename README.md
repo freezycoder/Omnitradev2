@@ -30,9 +30,10 @@ SEC EDGAR events use the SEC's free public API and do not require a key. Set
 `SEC_EDGAR_USER_AGENT` to a declared application name and reachable contact,
 as shown in `.env.example`, before running automated live scans.
 
-The SEC, classified-news, and FRED signals are recorded in **shadow mode**.
-They expose a capped modeled impact for calibration, but their applied impact
-is zero and they do not change live recommendations.
+The SEC, classified-news, and FRED signals are recorded in **shadow mode**
+with lifecycle label `UNVERIFIED`. They expose a capped modeled impact for
+calibration, but their applied impact is zero and they cannot auto-promote
+onto live recommendations. See `docs/research_promotion_gates.md`.
 
 Relative strength is also shadow-only. It compares each stock with SPY and its
 sector ETF over 1, 3, 6, and 12 months, then records universe and sector

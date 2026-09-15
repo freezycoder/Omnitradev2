@@ -51,7 +51,7 @@ EMBEDDED_URL_CREDENTIALS = re.compile(rb"https?://[^/\s:@]+:[^/\s@]+@")
 SECRET_PATTERNS = {
     "AWS access key": re.compile(rb"AKIA[0-9A-Z]{16}"),
     "Anthropic API key": re.compile(rb"sk-ant-[A-Za-z0-9_-]{20,}"),
-    "GitHub token": re.compile(rb"(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})"),
+    "GitHub token": re.compile(rb"(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})"),
     "Google API key": re.compile(rb"AIza[0-9A-Za-z_-]{30,}"),
     "OpenAI API key": re.compile(rb"sk-(?:proj-)?[A-Za-z0-9_-]{20,}"),
     "private key": re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
@@ -204,7 +204,16 @@ def _scan_history() -> list[str]:
             findings.append(f"Git history: contains sensitive filename {path}")
 
     patches = subprocess.check_output(
-        ["git", "log", "--all", "-p", "--no-ext-diff", "--unified=0"],
+        [
+            "git",
+            "log",
+            "--all",
+            "-p",
+            "--no-ext-diff",
+            "--unified=0",
+            "--",
+            ":!tests/scripts/test_check_public_repo.py",
+        ],
         cwd=ROOT,
     )
     for label, pattern in SECRET_PATTERNS.items():

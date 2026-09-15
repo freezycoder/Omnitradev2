@@ -90,6 +90,8 @@ def test_scan_exposes_earnings_event_risk_without_applied_impact():
     assert fields["earnings_event_risk"] == "high"
     assert fields["days_to_earnings"] == 2
     assert fields["earnings_intelligence_applied_impact"] == 0
+    assert fields["earnings_intelligence_lifecycle"] == "UNVERIFIED"
+    assert fields["earnings_intelligence_lifecycle_stage"] == "candidate"
 
 
 def test_rank_results_keeps_every_recommendation_tier(monkeypatch):

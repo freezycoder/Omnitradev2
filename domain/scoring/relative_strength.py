@@ -6,6 +6,9 @@ from typing import Any
 
 import pandas as pd
 
+from domain.research.lifecycle import EXPERIMENT_GROUP_RS, LifecycleLabel, LifecycleStage
+from domain.research.promotion import instantiate_sealed_shadow_view
+
 
 @dataclass(frozen=True)
 class RelativeStrengthPeriod:
@@ -43,6 +46,10 @@ class RelativeStrengthView:
     warnings: list[str] = field(default_factory=list)
     as_of_date: str | None = None
     updated_at: str | None = None
+    lifecycle_label: str = LifecycleLabel.UNVERIFIED.value
+    lifecycle_stage: str = LifecycleStage.CANDIDATE.value
+    experiment_ids: tuple[str, ...] = (EXPERIMENT_GROUP_RS,)
+    promotion_receipts: tuple[dict[str, Any], ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -249,6 +256,9 @@ def build_relative_strength_view(
         warnings=list(dict.fromkeys(warnings)),
         as_of_date=as_of.date().isoformat(),
         updated_at=datetime.now(UTC).isoformat(),
+        lifecycle_label=LifecycleLabel.UNVERIFIED.value,
+        lifecycle_stage=LifecycleStage.CANDIDATE.value,
+        experiment_ids=(EXPERIMENT_GROUP_RS,),
     )
 
 
@@ -277,6 +287,9 @@ def build_unavailable_relative_strength_view(
         summary=message,
         warnings=[message],
         updated_at=datetime.now(UTC).isoformat(),
+        lifecycle_label=LifecycleLabel.UNVERIFIED.value,
+        lifecycle_stage=LifecycleStage.CANDIDATE.value,
+        experiment_ids=(EXPERIMENT_GROUP_RS,),
     )
 
 
@@ -288,13 +301,23 @@ def relative_strength_view_from_dict(payload: dict[str, Any] | None) -> Relative
         )
     period_rows = payload.get("periods")
     periods = [
-        RelativeStrengthPeriod(**row)
+        RelativeStrengthPeriod(
+            **{
+                key: value
+                for key, value in row.items()
+                if key in RelativeStrengthPeriod.__dataclass_fields__
+            }
+        )
         for row in period_rows or []
         if isinstance(row, dict)
     ]
     values = dict(payload)
     values["periods"] = periods
-    return RelativeStrengthView(**values)
+    return instantiate_sealed_shadow_view(
+        RelativeStrengthView,
+        values,
+        experiment_ids=(EXPERIMENT_GROUP_RS,),
+    )
 
 
 __all__ = [

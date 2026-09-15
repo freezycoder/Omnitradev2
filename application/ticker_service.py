@@ -12,8 +12,11 @@ from config.settings import ALLOW_DEMO_FALLBACK, DATA_MODE_AUTO, DATA_MODE_DEMO,
 from domain.recommendations.engine import (
     LongTermRecommendation,
     ShortTermRecommendation,
-    build_long_term_recommendation,
-    build_short_term_recommendation,
+    write_live_recommendations,
+)
+from domain.research.promotion import (
+    overlay_shadow_on_live_score,
+    seal_shadow_live_fields,
 )
 from domain.scoring.accounting_quality import (
     AccountingQualityView,
@@ -393,11 +396,22 @@ def _build_analysis(
         ticker=ticker,
         company_name=str(company_name),
     )
-    alternative_signal_view = build_alternative_signal_view(
-        sec_bundle=sec_event_bundle,
-        news_items=news_items,
-        news_status_message=news_status_message,
-        macro_bundle=macro_bundle,
+    alternative_signal_view = seal_shadow_live_fields(
+        build_alternative_signal_view(
+            sec_bundle=sec_event_bundle,
+            news_items=news_items,
+            news_status_message=news_status_message,
+            macro_bundle=macro_bundle,
+        ),
+        data_source=data_source,
+    )
+    relative_strength_view = seal_shadow_live_fields(
+        relative_strength_view,
+        data_source=data_source,
+    )
+    earnings_intelligence_view = seal_shadow_live_fields(
+        earnings_intelligence_view,
+        data_source=data_source,
     )
     snapshot = build_snapshot(enriched_history, quote=quote)
     if snapshot is None:
@@ -423,8 +437,20 @@ def _build_analysis(
         ),
         earnings_intelligence_view.days_to_earnings,
     )
-    long_rec = build_long_term_recommendation(long_term_view, accounting_quality_view)
-    short_rec = build_short_term_recommendation(short_term_view, accounting_quality_view)
+    long_term_view, alternative_signal_view = overlay_shadow_on_live_score(
+        long_term_view,
+        alternative_signal_view,
+    )
+    long_rec, short_rec = write_live_recommendations(
+        long_term_view,
+        short_term_view,
+        accounting_quality_view,
+        shadow_views=(
+            alternative_signal_view,
+            relative_strength_view,
+            earnings_intelligence_view,
+        ),
+    )
 
     return TickerAnalysis(
         ticker=ticker.upper().strip(),

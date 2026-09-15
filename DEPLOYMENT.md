@@ -44,9 +44,9 @@ performance-log and watchlist mutations at the API boundary while leaving all
 research views available.
 
 Alternative signals remain shadow-only in hosted and local deployments. Their
-modeled impact is capped at ±10, their applied impact remains zero, and the
-Calibration page must meet every evidence gate before activation is even
-eligible for manual review.
+modeled impact is capped at ±10, their applied impact remains zero, lifecycle
+labels stay `UNVERIFIED`, and readiness gates cannot auto-promote onto live
+recommendations. See `docs/research_promotion_gates.md`.
 
 After deploy, open:
 
