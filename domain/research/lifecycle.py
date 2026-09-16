@@ -207,6 +207,7 @@ EXPERIMENT_PEAD = "pead"
 EXPERIMENT_FORM4 = "form4"
 EXPERIMENT_FINRA_SHORT_VOL = "finra_short_vol"
 EXPERIMENT_EARNINGS_INTELLIGENCE = "earnings_intelligence"
+EXPERIMENT_NFCI_REGIME = "nfci_regime_gate"
 
 EXPERIMENTS: tuple[ShadowExperiment, ...] = (
     ShadowExperiment(
@@ -254,6 +255,16 @@ EXPERIMENTS: tuple[ShadowExperiment, ...] = (
         implemented=True,
         notes="Existing earnings-intelligence shadow layer, including PEAD filing-window evidence.",
     ),
+    ShadowExperiment(
+        experiment_id=EXPERIMENT_NFCI_REGIME,
+        name="NFCI financial-conditions regime gate",
+        plumbing="domain.scoring.nfci_regime / application.nfci_regime_eval_service",
+        implemented=True,
+        notes=(
+            "Shadow-only long-screen throttle on frozen NFCI rising persistence. "
+            "Nested kill switch versus KEEP HY OAS. Applied impact stays 0."
+        ),
+    ),
 )
 
 IN_FLIGHT_EXPERIMENT_IDS: tuple[str, ...] = (
@@ -261,6 +272,7 @@ IN_FLIGHT_EXPERIMENT_IDS: tuple[str, ...] = (
     EXPERIMENT_PEAD,
     EXPERIMENT_FORM4,
     EXPERIMENT_FINRA_SHORT_VOL,
+    EXPERIMENT_NFCI_REGIME,
 )
 
 
@@ -531,6 +543,7 @@ __all__ = [
     "EXPERIMENT_FINRA_SHORT_VOL",
     "EXPERIMENT_FORM4",
     "EXPERIMENT_GROUP_RS",
+    "EXPERIMENT_NFCI_REGIME",
     "EXPERIMENT_PEAD",
     "EXPERIMENTS",
     "FORBIDDEN_AUTO_PROMOTE",
