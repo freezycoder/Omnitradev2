@@ -6,6 +6,7 @@ import pytest
 
 from domain.recommendations.engine import write_live_recommendations
 from domain.research.lifecycle import (
+    EXPERIMENT_FINRA_SHORT_INTEREST,
     EXPERIMENT_FINRA_SHORT_VOL,
     EXPERIMENT_FORM4,
     EXPERIMENT_GROUP_RS,
@@ -40,6 +41,10 @@ from domain.scoring.alternative_signals import build_unavailable_alternative_sig
 from domain.scoring.earnings_intelligence import (
     build_unavailable_earnings_intelligence_view,
     earnings_intelligence_view_from_dict,
+)
+from domain.scoring.finra_short_interest import (
+    build_unavailable_finra_short_interest_view,
+    finra_short_interest_view_from_dict,
 )
 from domain.scoring.long_term import LongTermView
 from domain.scoring.relative_strength import (
@@ -117,6 +122,7 @@ def test_in_flight_experiments_are_labeled_unverified_with_zero_live_impact() ->
         EXPERIMENT_PEAD,
         EXPERIMENT_FORM4,
         EXPERIMENT_FINRA_SHORT_VOL,
+        EXPERIMENT_FINRA_SHORT_INTEREST,
     )
     tagged = in_flight_experiments()
     assert {item.experiment_id for item in tagged} == set(IN_FLIGHT_EXPERIMENT_IDS)
@@ -124,6 +130,8 @@ def test_in_flight_experiments_are_labeled_unverified_with_zero_live_impact() ->
     assert all(item.lifecycle_stage is LifecycleStage.CANDIDATE for item in tagged)
     assert all(item.live_applied_impact == 0 for item in tagged)
     assert experiment_by_id(EXPERIMENT_FINRA_SHORT_VOL).implemented is False
+    assert experiment_by_id(EXPERIMENT_FINRA_SHORT_INTEREST).implemented is True
+    assert experiment_by_id(EXPERIMENT_FINRA_SHORT_INTEREST).live_applied_impact == 0
 
 
 def test_gate_checklist_covers_the_required_live_set() -> None:
@@ -294,6 +302,15 @@ def test_cache_rebuild_discards_spoofed_applied_impact() -> None:
     assert restored_ei.applied_impact == 0
     assert restored_ei.lifecycle_label == LifecycleLabel.UNVERIFIED.value
     assert EXPERIMENT_PEAD in restored_ei.experiment_ids
+
+    si_payload = build_unavailable_finra_short_interest_view("fixture").to_dict()
+    si_payload["applied_impact"] = 6
+    si_payload["lifecycle_label"] = "REAL"
+    restored_si = finra_short_interest_view_from_dict(si_payload)
+    assert restored_si.applied_impact == 0
+    assert restored_si.lifecycle_label == LifecycleLabel.UNVERIFIED.value
+    assert restored_si.experiment_ids == (EXPERIMENT_FINRA_SHORT_INTEREST,)
+    assert restored_si.squeeze_narrative is False
 
 
 def test_shadow_calibration_activation_does_not_issue_live_receipts() -> None:

@@ -69,3 +69,4 @@ without changing live impact (still zero):
 - `pead` — earnings-intelligence post-filing 3-session move
 - `form4` — Form 4 open-market insider flow inside the SEC overlay
 - `finra_short_vol` — registered UNVERIFIED placeholder; no signal implemented
+- `finra_short_interest` — biweekly Rule 4560 levels dated to publication; shadow-only; %float deferred; no squeeze products

@@ -125,3 +125,20 @@ def render_calibration_page(calibration_results: dict) -> None:
         )
     else:
         st.info("No threshold-filter comparison is available yet.")
+
+    finra_si = calibration_results.get("finra_short_interest_analysis", {})
+    render_rank_sheet_header("FINRA Biweekly Short Interest")
+    st.caption(
+        "Rule 4560 levels dated to publication, nested versus daily short-volume ratio. "
+        "Shadow-only. %float deferred. No squeeze products."
+    )
+    if finra_si:
+        research = finra_si.get("walk_forward", {})
+        st.write(
+            f"Verdict: {research.get('verdict', 'n/a')} · applied impact {finra_si.get('applied_impact', 0)} · "
+            f"%float {finra_si.get('pct_float', {}).get('status', 'deferred')} · "
+            f"squeeze narrative {'present' if finra_si.get('squeeze_narrative') else 'forbidden'}."
+        )
+        st.caption(str(research.get("verdict_summary") or ""))
+    else:
+        st.info("FINRA short-interest experiment metadata is unavailable.")

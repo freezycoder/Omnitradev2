@@ -148,3 +148,39 @@ def test_earnings_intelligence_calibration_rewards_aligned_score_bands():
         row["earnings_intelligence_band"]
         for row in payload["cohorts"]
     } == {"Strong", "Deteriorating"}
+
+
+def test_finra_short_interest_calibration_stays_shadow_and_locked(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "application.calibration_service.FINRA_SHORT_INTEREST_CACHE_DIR",
+        tmp_path,
+    )
+    row = _row(1, 0, 0.5)
+    row["feature_snapshot_json"] = json.dumps(
+        {
+            "finra_short_interest": {
+                "short_shares": 1_000_000,
+                "pct_change_prior": 12.0,
+                "days_to_cover": 3.2,
+                "applied_impact": 0,
+                "pct_float_status": "deferred",
+                "not_short_volume": True,
+                "squeeze_narrative": False,
+            }
+        }
+    )
+    service = CalibrationService.__new__(CalibrationService)
+    service._outcome_repository = _OutcomeRepository([row])
+
+    payload = service.get_finra_short_interest_analysis()
+
+    assert payload["mode"] == "shadow"
+    assert payload["activation_ready"] is False
+    assert payload["automatic_activation"] is False
+    assert payload["applied_impact"] == 0
+    assert payload["cannot_flip_live"] is True
+    assert payload["not_short_volume"] is True
+    assert payload["squeeze_narrative"] is False
+    assert payload["pct_float"]["status"] == "deferred"
+    assert payload["logged_snapshots"]["resolved_signals_with_feature"] == 1
+    assert payload["walk_forward"]["pre_registration"]["event_date"] == "publication_date"

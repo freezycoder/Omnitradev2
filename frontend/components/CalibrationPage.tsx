@@ -143,6 +143,15 @@ export function CalibrationPage() {
     };
   });
   const positiveEarningsFolds = pickArray(earningsIntelligenceAnalysis.validation_folds).filter((row) => row.positive === true).length;
+  const finraShortInterestAnalysis = pickRecord(data?.finra_short_interest_analysis);
+  const finraSiResearch = pickRecord(finraShortInterestAnalysis.walk_forward);
+  const finraSiPctFloat = pickRecord(finraShortInterestAnalysis.pct_float);
+  const finraSiSample = pickRecord(finraSiResearch.sample);
+  const finraSiLogged = pickRecord(finraShortInterestAnalysis.logged_snapshots);
+  const finraSiNested = pickArray(finraSiResearch.nested_primary);
+  const liftingSiFeatures = Array.isArray(finraSiResearch.lifting_features)
+    ? finraSiResearch.lifting_features
+    : [];
   const alternativeReadiness = shadowReadiness(alternativeSignalAnalysis);
   const relativeStrengthReadiness = shadowReadiness(relativeStrengthAnalysis);
   const earningsReadiness = shadowReadiness(earningsIntelligenceAnalysis);
@@ -273,6 +282,70 @@ export function CalibrationPage() {
                   columns={calibrationColumns("earnings_intelligence_band")}
                   emptyLabel="Earnings-intelligence cohorts will appear after the new signals resolve."
                 />
+              </div>
+            </div>
+          </TerminalPanel>
+
+          <TerminalPanel title="FINRA short-interest experiment" eyebrow="Rule 4560 levels · publication dated · nested vs short volume · shadow only">
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard
+                  label="Verdict"
+                  value={sentenceCase(finraSiResearch.verdict)}
+                  meta={String(finraSiResearch.verdict_summary ?? "Nested walk-forward not yet ingested")}
+                  tone={String(finraSiResearch.verdict) === "success" ? "positive" : String(finraSiResearch.verdict) === "fail" ? "negative" : "warning"}
+                />
+                <MetricCard
+                  label="Lifting Features"
+                  value={String(liftingSiFeatures.length)}
+                  meta="SI features with nested lift in ≥2/3 folds"
+                  tone={liftingSiFeatures.length >= 1 ? "positive" : "warning"}
+                />
+                <MetricCard
+                  label="Publication Dates"
+                  value={String(finraSiSample.publication_dates ?? 0)}
+                  meta={`Need ${String(finraSiSample.minimum_publication_dates ?? 36)} cycles`}
+                  tone={finraSiSample.history_sufficient ? "positive" : "warning"}
+                />
+                <MetricCard
+                  label="% Float"
+                  value={sentenceCase(finraSiPctFloat.status)}
+                  meta="Not a FINRA field; no frozen float feed"
+                  tone="warning"
+                />
+              </div>
+              <DiagnosticCard diagnostic={pickRecord(finraShortInterestAnalysis.diagnostic)} />
+              <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+                <DataTable
+                  rows={[
+                    { requirement: "Event date", required: "publication_date", current: String(pickRecord(finraSiResearch.pre_registration).event_date ?? "publication_date"), status: "Passed" },
+                    { requirement: "Live applied impact", required: 0, current: finraShortInterestAnalysis.applied_impact ?? 0, status: (finraShortInterestAnalysis.applied_impact ?? 0) === 0 ? "Passed" : "Pending" },
+                    { requirement: "Squeeze narrative", required: "Forbidden", current: finraShortInterestAnalysis.squeeze_narrative ? "Present" : "Absent", status: finraShortInterestAnalysis.squeeze_narrative ? "Pending" : "Passed" },
+                    { requirement: "%float", required: "Deferred or ≥70% coverage", current: sentenceCase(finraSiPctFloat.status), status: finraSiPctFloat.status === "deferred" ? "Passed" : "Pending" },
+                    { requirement: "Activation", required: "Locked", current: finraShortInterestAnalysis.activation_ready ? "Review Ready" : "Locked", status: finraShortInterestAnalysis.activation_ready ? "Pending" : "Passed" },
+                    { requirement: "Logged snapshots", required: "Shadow log only", current: finraSiLogged.resolved_signals_with_feature ?? 0, status: "Passed" }
+                  ]}
+                  columns={[
+                    { key: "requirement", header: "Evidence gate", render: (row) => <span className="font-semibold text-white">{String(row.requirement)}</span> },
+                    { key: "required", header: "Required", align: "right" },
+                    { key: "current", header: "Current", align: "right" },
+                    { key: "status", header: "Status", render: (row) => <StatusBadge tone={row.status === "Passed" ? "positive" : "warning"}>{String(row.status)}</StatusBadge> }
+                  ]}
+                  emptyLabel="No FINRA short-interest gates are available."
+                />
+                <DataTable
+                  rows={finraSiNested}
+                  columns={[
+                    { key: "feature", header: "SI feature", render: (row) => <span className="font-semibold text-white">{String(row.feature ?? "N/A")}</span> },
+                    { key: "significant_folds", header: "Sig. folds", align: "right" },
+                    { key: "eligible_folds", header: "Eligible", align: "right" },
+                    { key: "target", header: "Target", align: "right" }
+                  ]}
+                  emptyLabel="Nested SI vs short-volume results appear after a panel is ingested."
+                />
+              </div>
+              <div className="text-xs leading-5 text-[var(--dim)]">
+                Event dates are publication dates, not settlement dates. Frozen Δ/DTC screens are not squeeze products. Daily short-volume ratio is the nested baseline. This overlay cannot change live recommendations.
               </div>
             </div>
           </TerminalPanel>

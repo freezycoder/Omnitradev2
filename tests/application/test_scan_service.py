@@ -7,12 +7,14 @@ from dataclasses import replace
 from application.scan_service import (
     _assign_relative_strength_percentiles,
     _earnings_intelligence_fields,
+    _finra_short_interest_fields,
     _passes_universe_filters,
     _rank_results,
 )
 from domain.scoring.earnings_intelligence import (
     build_unavailable_earnings_intelligence_view,
 )
+from domain.scoring.finra_short_interest import build_unavailable_finra_short_interest_view
 from domain.scoring.relative_strength import build_unavailable_relative_strength_view
 
 
@@ -92,6 +94,36 @@ def test_scan_exposes_earnings_event_risk_without_applied_impact():
     assert fields["earnings_intelligence_applied_impact"] == 0
     assert fields["earnings_intelligence_lifecycle"] == "UNVERIFIED"
     assert fields["earnings_intelligence_lifecycle_stage"] == "candidate"
+
+
+def test_scan_exposes_finra_short_interest_without_applied_impact():
+    base = build_unavailable_finra_short_interest_view("fixture")
+    analysis = SimpleNamespace(
+        finra_short_interest_view=replace(
+            base,
+            status="available",
+            short_shares=1_000_000.0,
+            pct_change_prior=25.0,
+            days_to_cover=6.2,
+            publication_date="2026-08-11",
+            settlement_date="2026-07-31",
+            event_date="2026-08-11",
+            pct_float_status="deferred",
+            not_short_volume=True,
+            squeeze_narrative=False,
+            applied_impact=0,
+        )
+    )
+
+    fields = _finra_short_interest_fields(analysis)
+
+    assert fields["finra_short_shares"] == 1_000_000.0
+    assert fields["finra_si_event_date"] == "2026-08-11"
+    assert fields["finra_si_event_date"] != fields["finra_si_settlement_date"]
+    assert fields["finra_si_pct_float_status"] == "deferred"
+    assert fields["finra_si_not_short_volume"] is True
+    assert fields["finra_si_squeeze_narrative"] is False
+    assert fields["finra_short_interest_applied_impact"] == 0
 
 
 def test_rank_results_keeps_every_recommendation_tier(monkeypatch):

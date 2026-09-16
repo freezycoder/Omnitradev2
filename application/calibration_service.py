@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from application.calibration_research_service import CalibrationResearchService
+from application.finra_short_interest_research_service import empty_research_payload
 from application.performance_lab_service import PerformanceLabService
 from domain.research.lifecycle import (
     EXPERIMENT_ALTERNATIVE_SIGNALS,
@@ -12,6 +13,7 @@ from domain.research.lifecycle import (
     EXPERIMENT_GROUP_RS,
 )
 from domain.research.promotion import annotate_calibration_payload
+from config.finra_short_interest import CACHE_DIR as FINRA_SHORT_INTEREST_CACHE_DIR, LEGAL_GATE
 from config.performance import (
     COMMISSION_PER_TRADE,
     COST_FILTER_ENABLED,
@@ -33,6 +35,7 @@ from config.performance import (
     TURNOVER_LOOKBACK_DAYS,
     estimated_round_trip_cost_pct,
 )
+from storage.cache.json_cache import load_json
 from storage.repositories.outcome_repository import OutcomeRepository
 from storage.repositories.signal_repository import SignalRepository
 from storage.sqlite import connection_scope
@@ -95,6 +98,7 @@ class CalibrationService:
         alternative_signal_analysis = self.get_alternative_signal_analysis()
         relative_strength_analysis = self.get_relative_strength_analysis()
         earnings_intelligence_analysis = self.get_earnings_intelligence_analysis()
+        finra_short_interest_analysis = self.get_finra_short_interest_analysis()
         active_thresholds = self.get_active_thresholds()
         payload = {
             "summary": {
@@ -114,6 +118,7 @@ class CalibrationService:
             "alternative_signal_analysis": alternative_signal_analysis,
             "relative_strength_analysis": relative_strength_analysis,
             "earnings_intelligence_analysis": earnings_intelligence_analysis,
+            "finra_short_interest_analysis": finra_short_interest_analysis,
             "edge_filter": self._performance_lab_service.get_edge_filter_payload(),
             "research_calibration": CalibrationResearchService(
                 outcome_repository=self._outcome_repository,
@@ -137,6 +142,7 @@ class CalibrationService:
                 "alternative_signal_validation": alternative_signal_analysis["diagnostic"],
                 "relative_strength_validation": relative_strength_analysis["diagnostic"],
                 "earnings_intelligence_validation": earnings_intelligence_analysis["diagnostic"],
+                "finra_short_interest_validation": finra_short_interest_analysis["diagnostic"],
             },
         }
         return payload
@@ -945,6 +951,62 @@ class CalibrationService:
                 "diagnostic": diagnostic,
             },
             experiment_id=EXPERIMENT_EARNINGS_INTELLIGENCE,
+        )
+
+    def get_finra_short_interest_analysis(self) -> dict[str, Any]:
+        research = self._finra_short_interest_research_payload()
+        logged_count = 0
+        for row in self._outcome_repository.list_calibration_observations():
+            try:
+                snapshot = json.loads(row["feature_snapshot_json"] or "{}")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                snapshot = {}
+            shadow = snapshot.get("finra_short_interest")
+            if isinstance(shadow, dict):
+                logged_count += 1
+        verdict = str(research.get("verdict") or "data_blocked")
+        diagnostic_status = {
+            "success": "Significant nested SI lift",
+            "fail": "No incremental SI lift",
+            "data_blocked": "Data-blocked",
+        }.get(verdict, "Collecting evidence")
+        diagnostic = {
+            "title": "FINRA short-interest validation",
+            "status": diagnostic_status,
+            "summary": str(research.get("verdict_summary") or ""),
+            "expectation": (
+                "Biweekly SI levels dated to publication should add incremental "
+                "association versus daily short-volume ratio after liquidity controls. "
+                "Live recommendations stay unchanged. %float is deferred."
+            ),
+        }
+        return {
+            "mode": "shadow",
+            "automatic_activation": False,
+            "activation_ready": False,
+            "applied_impact": 0,
+            "cannot_flip_live": True,
+            "feature_family": "short_interest",
+            "feature_label": "FINRA biweekly short interest",
+            "not_short_volume": True,
+            "squeeze_narrative": False,
+            "provenance": "FINRA_RULE_4560",
+            "pct_float": research.get("pct_float"),
+            "legal_gate": dict(LEGAL_GATE),
+            "logged_snapshots": {"resolved_signals_with_feature": logged_count},
+            "walk_forward": research,
+            "diagnostic": diagnostic,
+        }
+
+    def _finra_short_interest_research_payload(self) -> dict[str, Any]:
+        cached = load_json(FINRA_SHORT_INTEREST_CACHE_DIR / "experiment_payload.json", default=None)
+        if isinstance(cached, dict) and cached.get("experiment_id"):
+            return cached
+        return empty_research_payload(
+            reason=(
+                "No ingested FINRA short-interest panel is cached in this environment. "
+                "The pre-registered nested walk-forward still runs from injected observations in tests."
+            )
         )
 
     def _ordered_rows(

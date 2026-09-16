@@ -19,7 +19,7 @@ import {
   READ_ONLY_API_CAPABILITIES,
   TickerPayload
 } from "@/lib/api";
-import { asNumber, formatAvailable, formatCurrency, formatLargeNumber, formatPct, formatSignedPct, pickArray, pickRecord, sentenceCase } from "@/lib/format";
+import { asNumber, formatAvailable, formatCurrency, formatLargeNumber, formatPct, formatRatio, formatSignedPct, pickArray, pickRecord, sentenceCase } from "@/lib/format";
 
 type Row = Record<string, unknown>;
 type DataMode = "auto" | "live" | "demo";
@@ -199,6 +199,13 @@ export function TickerAnalysisPage() {
     : [];
   const earningsWarnings = Array.isArray(earningsIntelligence.warnings)
     ? earningsIntelligence.warnings.map((item) => String(item))
+    : [];
+  const finraShortInterest = pickRecord(data?.finra_short_interest_view);
+  const finraSiEvidence = Array.isArray(finraShortInterest.evidence)
+    ? finraShortInterest.evidence.map((item) => String(item))
+    : [];
+  const finraSiWarnings = Array.isArray(finraShortInterest.warnings)
+    ? finraShortInterest.warnings.map((item) => String(item))
     : [];
   const etfExposure = pickRecord(data?.etf_exposure);
   const etfExposureRows = pickArray(etfExposure.etfs);
@@ -454,6 +461,65 @@ export function TickerAnalysisPage() {
               {earningsWarnings.length ? (
                 <ul className="grid gap-2 text-xs text-[var(--amber)]">
                   {earningsWarnings.map((item) => <li key={item}>{item}</li>)}
+                </ul>
+              ) : null}
+            </div>
+          </TerminalPanel>
+
+          <TerminalPanel title="FINRA short interest" eyebrow="Rule 4560 biweekly levels · publication dated · shadow only">
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                <MetricCard
+                  label="Short Shares"
+                  value={formatLargeNumber(finraShortInterest.short_shares)}
+                  meta={`Published ${String(finraShortInterest.publication_date ?? "N/A")}`}
+                  tone="info"
+                />
+                <MetricCard
+                  label="Δ Prior Cycle"
+                  value={formatSignedPct(finraShortInterest.pct_change_prior, 1)}
+                  meta="Frozen gate ±20%"
+                  tone={(asNumber(finraShortInterest.pct_change_prior) ?? 0) >= 20 ? "warning" : (asNumber(finraShortInterest.pct_change_prior) ?? 0) <= -20 ? "warning" : "neutral"}
+                />
+                <MetricCard
+                  label="Days to Cover"
+                  value={formatRatio(finraShortInterest.days_to_cover, 2)}
+                  meta="Frozen gate 5 / 10"
+                  tone={(asNumber(finraShortInterest.days_to_cover) ?? 0) >= 5 ? "warning" : "neutral"}
+                />
+                <MetricCard
+                  label="% Float"
+                  value={sentenceCase(finraShortInterest.pct_float_status)}
+                  meta="Deferred · no frozen float feed"
+                  tone="warning"
+                />
+                <MetricCard
+                  label="Applied Impact"
+                  value={String(finraShortInterest.applied_impact ?? 0)}
+                  meta="Live recommendations unchanged"
+                  tone="neutral"
+                />
+                <MetricCard
+                  label="Event Date"
+                  value={String(finraShortInterest.event_date ?? "N/A")}
+                  meta={`Settlement ${String(finraShortInterest.settlement_date ?? "N/A")}`}
+                  tone="info"
+                />
+              </div>
+              <div className="border-l-2 border-[var(--accent)] pl-4 text-sm leading-6 text-[var(--muted)]">
+                {String(finraShortInterest.summary ?? "FINRA biweekly short interest is unavailable.")}
+              </div>
+              <div className="text-xs leading-5 text-[var(--dim)]">
+                This is Rule 4560 position-level short interest, not daily CNMS short-sale volume. Event dates are publication dates. Frozen Δ/DTC flags are screens, not squeeze products.
+              </div>
+              {finraSiEvidence.length ? (
+                <ul className="grid gap-2 text-sm text-[var(--muted)] md:grid-cols-2">
+                  {finraSiEvidence.map((item) => <li key={item} className="border-l border-[var(--line-strong)] pl-3">{item}</li>)}
+                </ul>
+              ) : null}
+              {finraSiWarnings.length ? (
+                <ul className="grid gap-2 text-xs text-[var(--amber)]">
+                  {finraSiWarnings.map((item) => <li key={item}>{item}</li>)}
                 </ul>
               ) : null}
             </div>
