@@ -206,6 +206,7 @@ EXPERIMENT_GROUP_RS = "group_rs"
 EXPERIMENT_PEAD = "pead"
 EXPERIMENT_FORM4 = "form4"
 EXPERIMENT_FINRA_SHORT_VOL = "finra_short_vol"
+EXPERIMENT_FINRA_SHORT_INTEREST = "finra_short_interest"
 EXPERIMENT_EARNINGS_INTELLIGENCE = "earnings_intelligence"
 
 EXPERIMENTS: tuple[ShadowExperiment, ...] = (
@@ -248,6 +249,18 @@ EXPERIMENTS: tuple[ShadowExperiment, ...] = (
         ),
     ),
     ShadowExperiment(
+        experiment_id=EXPERIMENT_FINRA_SHORT_INTEREST,
+        name="FINRA biweekly short-interest overlay",
+        plumbing="domain.scoring.finra_short_interest",
+        implemented=True,
+        notes=(
+            "Shadow-only Rule 4560 levels dated to publication, not settlement. "
+            "Features: shortShares, pctChangePrior, daysToCover. %float deferred. "
+            "Nested vs daily short-volume ratio. Frozen Δ/DTC gates. No squeeze products. "
+            "Applied impact stays 0."
+        ),
+    ),
+    ShadowExperiment(
         experiment_id=EXPERIMENT_EARNINGS_INTELLIGENCE,
         name="Earnings intelligence overlay",
         plumbing="domain.scoring.earnings_intelligence",
@@ -261,6 +274,7 @@ IN_FLIGHT_EXPERIMENT_IDS: tuple[str, ...] = (
     EXPERIMENT_PEAD,
     EXPERIMENT_FORM4,
     EXPERIMENT_FINRA_SHORT_VOL,
+    EXPERIMENT_FINRA_SHORT_INTEREST,
 )
 
 
@@ -528,6 +542,7 @@ def receipt_dicts(receipts: Sequence[GateReceipt]) -> tuple[dict[str, Any], ...]
 __all__ = [
     "EXPERIMENT_ALTERNATIVE_SIGNALS",
     "EXPERIMENT_EARNINGS_INTELLIGENCE",
+    "EXPERIMENT_FINRA_SHORT_INTEREST",
     "EXPERIMENT_FINRA_SHORT_VOL",
     "EXPERIMENT_FORM4",
     "EXPERIMENT_GROUP_RS",

@@ -48,6 +48,11 @@ modeled impact is capped at ±10, their applied impact remains zero, lifecycle
 labels stay `UNVERIFIED`, and readiness gates cannot auto-promote onto live
 recommendations. See `docs/research_promotion_gates.md`.
 
+FINRA biweekly short interest is also shadow-only. Publication dating, frozen
+Δ/DTC screens, deferred %float, and a nested comparison versus daily short
+volume never change live recommendations. See
+`docs/experiments/finra_short_interest_shadow.md`.
+
 After deploy, open:
 
 ```text

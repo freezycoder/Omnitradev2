@@ -30,6 +30,12 @@ from domain.scoring.earnings_intelligence import (
     build_unavailable_earnings_intelligence_view,
     earnings_intelligence_view_from_dict,
 )
+from domain.scoring.finra_short_interest import (
+    FinraShortInterestView,
+    build_finra_short_interest_view,
+    build_unavailable_finra_short_interest_view,
+    finra_short_interest_view_from_dict,
+)
 from domain.scoring.long_term import LongTermView, build_long_term_view
 from domain.scoring.relative_strength import (
     RelativeStrengthView,
@@ -55,6 +61,7 @@ from providers.macro.fred_client import (
     fred_macro_bundle_from_dict,
 )
 from providers.market.benchmark_provider import load_relative_strength_benchmarks
+from providers.market.finra_short_interest_client import build_finra_short_interest_client
 from providers.market.market_provider import (
     build_snapshot,
     apply_quote_to_latest_history,
@@ -112,6 +119,7 @@ class TickerAnalysis:
     alternative_signal_view: AlternativeSignalView
     relative_strength_view: RelativeStrengthView
     earnings_intelligence_view: EarningsIntelligenceView
+    finra_short_interest_view: FinraShortInterestView
     history: pd.DataFrame
     enriched_history: pd.DataFrame
     snapshot: dict[str, float | None]
@@ -177,6 +185,7 @@ def _save_live_ticker_cache(
     macro_bundle: FredMacroBundle | None,
     relative_strength_view: RelativeStrengthView,
     earnings_intelligence_view: EarningsIntelligenceView,
+    finra_short_interest_view: FinraShortInterestView,
 ) -> str:
     updated_at = datetime.now(timezone.utc).isoformat()
     save_cached_ticker_data(
@@ -197,6 +206,7 @@ def _save_live_ticker_cache(
             "macro_bundle": macro_bundle.to_dict() if macro_bundle else None,
             "relative_strength_view": relative_strength_view.to_dict(),
             "earnings_intelligence_view": earnings_intelligence_view.to_dict(),
+            "finra_short_interest_view": finra_short_interest_view.to_dict(),
         },
     )
     return updated_at
@@ -218,6 +228,7 @@ def _load_cached_real_ticker(
     FredMacroBundle | None,
     RelativeStrengthView,
     EarningsIntelligenceView,
+    FinraShortInterestView,
     str | None,
 ]:
     cached = load_cached_ticker_data(ticker)
@@ -240,6 +251,9 @@ def _load_cached_real_ticker(
             ),
             build_unavailable_earnings_intelligence_view(
                 "No cached earnings-intelligence snapshot is available."
+            ),
+            build_unavailable_finra_short_interest_view(
+                "No cached FINRA short-interest snapshot is available."
             ),
             None,
         )
@@ -267,6 +281,9 @@ def _load_cached_real_ticker(
             build_unavailable_earnings_intelligence_view(
                 "Cached price history is unavailable for earnings intelligence."
             ),
+            build_unavailable_finra_short_interest_view(
+                "Cached price history is unavailable for FINRA short-interest analysis."
+            ),
             None,
         )
     return (
@@ -285,6 +302,7 @@ def _load_cached_real_ticker(
         earnings_intelligence_view_from_dict(
             cached.get("earnings_intelligence_view")
         ),
+        finra_short_interest_view_from_dict(cached.get("finra_short_interest_view")),
         cached.get("updated_at"),
     )
 
@@ -294,6 +312,21 @@ def _combine_messages(*messages: str | None) -> str | None:
     if not filtered:
         return None
     return " ".join(dict.fromkeys(filtered))
+
+
+def _load_finra_short_interest_view(ticker: str) -> FinraShortInterestView:
+    try:
+        row = build_finra_short_interest_client().get_latest_row(ticker)
+    except Exception:
+        _log.warning("FINRA short-interest fetch failed for %s.", ticker, exc_info=True)
+        return build_unavailable_finra_short_interest_view(
+            "FINRA biweekly short interest could not be retrieved."
+        )
+    if row is None:
+        return build_unavailable_finra_short_interest_view(
+            "FINRA biweekly short interest is unavailable for this ticker."
+        )
+    return build_finra_short_interest_view(row)
 
 
 def _fetch_alternative_sources(ticker: str) -> tuple[SecEventBundle | None, FredMacroBundle | None]:
@@ -371,6 +404,7 @@ def _build_analysis(
     macro_bundle: FredMacroBundle | None,
     relative_strength_view: RelativeStrengthView | None,
     earnings_intelligence_view: EarningsIntelligenceView | None,
+    finra_short_interest_view: FinraShortInterestView | None,
     intraday_status_message: str | None,
     news_status_message: str | None,
     data_source: str,
@@ -390,6 +424,10 @@ def _build_analysis(
     if earnings_intelligence_view is None:
         earnings_intelligence_view = build_unavailable_earnings_intelligence_view(
             "Earnings intelligence is unavailable for this data source."
+        )
+    if finra_short_interest_view is None:
+        finra_short_interest_view = build_unavailable_finra_short_interest_view(
+            "FINRA biweekly short interest is unavailable for this data source."
         )
     news_items = build_news_items(
         recent_news,
@@ -411,6 +449,10 @@ def _build_analysis(
     )
     earnings_intelligence_view = seal_shadow_live_fields(
         earnings_intelligence_view,
+        data_source=data_source,
+    )
+    finra_short_interest_view = seal_shadow_live_fields(
+        finra_short_interest_view,
         data_source=data_source,
     )
     snapshot = build_snapshot(enriched_history, quote=quote)
@@ -449,6 +491,7 @@ def _build_analysis(
             alternative_signal_view,
             relative_strength_view,
             earnings_intelligence_view,
+            finra_short_interest_view,
         ),
     )
 
@@ -472,6 +515,7 @@ def _build_analysis(
         alternative_signal_view=alternative_signal_view,
         relative_strength_view=relative_strength_view,
         earnings_intelligence_view=earnings_intelligence_view,
+        finra_short_interest_view=finra_short_interest_view,
         history=history,
         enriched_history=enriched_history,
         snapshot=snapshot,
@@ -507,6 +551,7 @@ def build_ticker_analysis(ticker: str, data_mode: str = DATA_MODE_AUTO) -> Ticke
             macro_bundle=None,
             relative_strength_view=None,
             earnings_intelligence_view=None,
+            finra_short_interest_view=None,
             intraday_status_message="Intraday analysis is not live in demo mode.",
             news_status_message="Finnhub news is not used in demo mode.",
             data_source="demo",
@@ -560,6 +605,7 @@ def build_ticker_analysis(ticker: str, data_mode: str = DATA_MODE_AUTO) -> Ticke
                 else None
             ),
         )
+        finra_short_interest_view = _load_finra_short_interest_view(normalized_ticker)
         updated_at = _save_live_ticker_cache(
             normalized_ticker,
             live_history,
@@ -575,6 +621,7 @@ def build_ticker_analysis(ticker: str, data_mode: str = DATA_MODE_AUTO) -> Ticke
             macro_bundle,
             relative_strength_view,
             earnings_intelligence_view,
+            finra_short_interest_view,
         )
         return _build_analysis(
             normalized_ticker,
@@ -591,6 +638,7 @@ def build_ticker_analysis(ticker: str, data_mode: str = DATA_MODE_AUTO) -> Ticke
             macro_bundle=macro_bundle,
             relative_strength_view=relative_strength_view,
             earnings_intelligence_view=earnings_intelligence_view,
+            finra_short_interest_view=finra_short_interest_view,
             intraday_status_message=intraday_message,
             news_status_message=finnhub_message,
             data_source="live",
@@ -615,6 +663,7 @@ def build_ticker_analysis(ticker: str, data_mode: str = DATA_MODE_AUTO) -> Ticke
         cached_macro_bundle,
         cached_relative_strength_view,
         cached_earnings_intelligence_view,
+        cached_finra_short_interest_view,
         cached_updated_at,
     ) = _load_cached_real_ticker(normalized_ticker)
     if not cached_history.empty:
@@ -633,6 +682,7 @@ def build_ticker_analysis(ticker: str, data_mode: str = DATA_MODE_AUTO) -> Ticke
             macro_bundle=cached_macro_bundle,
             relative_strength_view=cached_relative_strength_view,
             earnings_intelligence_view=cached_earnings_intelligence_view,
+            finra_short_interest_view=cached_finra_short_interest_view,
             intraday_status_message="Using cached intraday data where available.",
             news_status_message="Using cached Finnhub news and market context where available.",
             data_source="cached_real",
@@ -659,6 +709,7 @@ def build_ticker_analysis(ticker: str, data_mode: str = DATA_MODE_AUTO) -> Ticke
                 macro_bundle=None,
                 relative_strength_view=None,
                 earnings_intelligence_view=None,
+                finra_short_interest_view=None,
                 intraday_status_message="Intraday analysis is not live in demo mode.",
                 news_status_message="Finnhub news is not used in demo mode.",
                 data_source="demo",

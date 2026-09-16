@@ -44,6 +44,10 @@ FRED_CACHE_TTL_SECONDS = 6 * 60 * 60
 ALTERNATIVE_SIGNALS_MODE = "shadow"
 ALTERNATIVE_SIGNALS_MAX_IMPACT = 10
 
+# FINRA biweekly short-interest cache lives under DATA_DIR. Experiment
+# constants (publication lag, frozen Δ/DTC gates) are in
+# config.finra_short_interest and must not be shopped at eval time.
+
 DATA_MODE_AUTO = "auto"
 DATA_MODE_LIVE = "live"
 DATA_MODE_DEMO = "demo"

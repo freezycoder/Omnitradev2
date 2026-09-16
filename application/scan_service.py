@@ -73,6 +73,25 @@ def _earnings_intelligence_fields(result: TickerAnalysis) -> dict[str, Any]:
     }
 
 
+def _finra_short_interest_fields(result: TickerAnalysis) -> dict[str, Any]:
+    view = result.finra_short_interest_view
+    return {
+        "finra_short_interest_status": view.status,
+        "finra_short_interest_applied_impact": view.applied_impact,
+        "finra_short_interest_lifecycle": view.lifecycle_label,
+        "finra_short_interest_lifecycle_stage": view.lifecycle_stage,
+        "finra_short_shares": view.short_shares,
+        "finra_si_pct_change_prior": view.pct_change_prior,
+        "finra_si_days_to_cover": view.days_to_cover,
+        "finra_si_publication_date": view.publication_date,
+        "finra_si_settlement_date": view.settlement_date,
+        "finra_si_event_date": view.event_date,
+        "finra_si_pct_float_status": view.pct_float_status,
+        "finra_si_not_short_volume": view.not_short_volume,
+        "finra_si_squeeze_narrative": view.squeeze_narrative,
+    }
+
+
 def _passes_universe_filters(result: TickerAnalysis) -> bool:
     filters = universe_filters_for_ticker(result.ticker)
     price = result.snapshot["current_price"] or 0
@@ -109,6 +128,7 @@ def _build_market_row(result: TickerAnalysis) -> dict[str, Any]:
         "alternative_signal_lifecycle_stage": result.alternative_signal_view.lifecycle_stage,
         **_relative_strength_fields(result),
         **_earnings_intelligence_fields(result),
+        **_finra_short_interest_fields(result),
     }
 
 
@@ -147,6 +167,7 @@ def _build_long_term_row(result: TickerAnalysis) -> dict[str, Any]:
         "alternative_signal_lifecycle_stage": result.alternative_signal_view.lifecycle_stage,
         **_relative_strength_fields(result),
         **_earnings_intelligence_fields(result),
+        **_finra_short_interest_fields(result),
         "accounting_quality_score": result.accounting_quality_view.accounting_quality_score,
         "shenanigan_risk_score": result.accounting_quality_view.shenanigan_risk_score,
         "accounting_data_completeness_score": result.accounting_quality_view.accounting_data_completeness_score,
@@ -205,6 +226,7 @@ def _build_short_term_row(result: TickerAnalysis) -> dict[str, Any]:
         "alternative_signal_lifecycle_stage": result.alternative_signal_view.lifecycle_stage,
         **_relative_strength_fields(result),
         **_earnings_intelligence_fields(result),
+        **_finra_short_interest_fields(result),
         "accounting_warning": result.short_term_recommendation.accounting_warning,
         "accounting_label": result.accounting_quality_view.label,
         "shenanigan_risk_score": result.accounting_quality_view.shenanigan_risk_score,

@@ -46,6 +46,12 @@ counts, the next earnings date, recent guidance headlines, and the observed
 three-session move after the latest SEC earnings filing. Imminent earnings are
 flagged as event risk, never interpreted as bullish or bearish by themselves.
 
+FINRA Rule 4560 biweekly short interest is a separate **shadow** positioning
+factor. Event dates are publication dates (not settlement), %float is deferred,
+Δ/DTC screens are frozen, and applied impact stays zero. It is nested against
+daily short-sale volume and is not a squeeze product. See
+`docs/experiments/finra_short_interest_shadow.md`.
+
 This product uses the FRED® API but is not endorsed or certified by the
 Federal Reserve Bank of St. Louis.
 
