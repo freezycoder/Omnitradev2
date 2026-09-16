@@ -316,6 +316,7 @@ def _walk_forward_folds(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any
         mse_base = None
         mse_full = None
         unmatched_coef = None
+        cluster_coef = None
         if eligible:
             y_train, x_base_train, x_full_train = _design_matrices(training_rows)
             y_val, x_base_val, x_full_val = _design_matrices(validation_rows)
@@ -324,11 +325,18 @@ def _walk_forward_folds(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any
             mse_base = _predict_mse(y_val, x_base_val, beta_base)
             mse_full = _predict_mse(y_val, x_full_val, beta_full)
             unmatched_coef = float(beta_full[2]) if beta_full.size > 2 else None
-            lift = bool(
-                mse_full + NESTED_LIFT_EPSILON < mse_base
-                and unmatched_coef is not None
-                and unmatched_coef > 0
-            )
+            cluster_coef = float(beta_full[3]) if beta_full.size > 3 else None
+            intent_flag = [
+                float(row["unmatched_144_intensity"]) > 0 or int(row["cluster_144"]) == 1
+                for row in validation_rows
+            ]
+            intent_y = [float(row["subsequent_form4_sale"]) for row, flag in zip(validation_rows, intent_flag) if flag]
+            other_y = [float(row["subsequent_form4_sale"]) for row, flag in zip(validation_rows, intent_flag) if not flag]
+            if intent_y and other_y:
+                directional = (sum(intent_y) / len(intent_y)) >= (sum(other_y) / len(other_y))
+            else:
+                directional = True
+            lift = bool(mse_full + NESTED_LIFT_EPSILON < mse_base and directional)
         folds.append(
             {
                 "fold": index + 1,
@@ -342,7 +350,8 @@ def _walk_forward_folds(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any
                 "mse_nested_144": None if mse_full is None else round(mse_full, 6),
                 "unmatched_144_coefficient": None
                 if unmatched_coef is None
-                else round(unmatched_coef, 6),
+                else round(unmatched_coef, 8),
+                "cluster_144_coefficient": None if cluster_coef is None else round(cluster_coef, 8),
                 "incremental_lift": lift,
             }
         )
