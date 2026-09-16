@@ -226,9 +226,13 @@ EXPERIMENTS: tuple[ShadowExperiment, ...] = (
     ShadowExperiment(
         experiment_id=EXPERIMENT_PEAD,
         name="Post-earnings announcement drift (filing 3d)",
-        plumbing="domain.scoring.earnings_intelligence.post_filing_3d_return_pct",
+        plumbing="domain.scoring.pead_shadow / domain.evaluation.pead_experiment",
         implemented=True,
-        notes="Observed three-session move after the latest SEC earnings filing. Shadow-only.",
+        notes=(
+            "Three-session post-filing return remains the only earnings-score input. "
+            "10/20/60-session SPY/sector excess is shadow-logged for the pre-registered "
+            "PEAD eval. Applied impact stays 0; success never auto-promotes."
+        ),
     ),
     ShadowExperiment(
         experiment_id=EXPERIMENT_FORM4,

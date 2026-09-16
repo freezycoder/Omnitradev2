@@ -47,7 +47,11 @@ def test_pead_eval_aborts_as_data_blocked_when_n_unmet():
 
     assert payload["mode"] == "shadow"
     assert payload["automatic_activation"] is False
+    assert payload["cannot_flip_live"] is True
     assert payload["live_score_changes"] is False
+    assert payload["lifecycle_label"] == "UNVERIFIED"
+    assert payload["lifecycle_stage"] == "candidate"
+    assert payload["promotion"]["live_write_allowed"] is False
     assert payload["verdict"] == "data_blocked"
     assert payload["protocol"]["primary_surprise_abs_pct"] == PRIMARY_SURPRISE_ABS_PCT
     assert "data-blocked" in payload["summary"]
@@ -59,6 +63,9 @@ def test_pead_eval_succeeds_on_pre_registered_large_surprise_drift():
 
     assert payload["verdict"] == "success"
     assert payload["live_score_changes"] is False
+    assert payload["automatic_activation"] is False
+    assert payload["cannot_flip_live"] is True
+    assert payload["promotion"]["live_write_allowed"] is False
     passed = payload["diagnostic"]["confirmatory_passed"]
     assert 20 in passed or 60 in passed
     twenty = next(row for row in payload["confirmatory_horizons"] if row["sessions"] == 20)

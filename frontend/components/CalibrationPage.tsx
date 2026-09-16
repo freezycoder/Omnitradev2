@@ -154,6 +154,7 @@ export function CalibrationPage() {
   const peadBuckets = pickArray(peadExperiment.surprise_buckets);
   const peadVerdict = String(peadExperiment.verdict ?? "data_blocked");
   const peadTone = peadVerdict === "success" ? "positive" : peadVerdict === "fail" ? "negative" : "warning";
+  const peadReadiness = shadowReadiness(peadExperiment);
 
   const scoreChartRows = scoreBuckets.map((row) => ({
     bucket: String(row.score_bucket ?? "N/A"),
@@ -287,11 +288,12 @@ export function CalibrationPage() {
 
           <TerminalPanel title="PEAD 10/20/60 shadow experiment" eyebrow="Pre-registered · SPY excess · no live scoring">
             <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 <MetricCard label="Verdict" value={String(peadExperiment.status ?? "Data blocked")} meta="Never changes live recommendations" tone={peadTone} />
                 <MetricCard label="Primary events" value={String(peadExperiment.primary_event_count ?? 0)} meta={String(peadExperiment.primary_bucket ?? "|surprise| >= 5%")} tone="info" />
                 <MetricCard label="Held-out events" value={String(peadExperiment.oos_event_count ?? 0)} meta="Walk-forward validation dates" tone="info" />
                 <MetricCard label="Abort N (20d)" value={String(pickRecord(peadAbort.minimum_primary_n_by_horizon)["20"] ?? 40)} meta="Unmet N is data-blocked, not fail" tone="neutral" />
+                <MetricCard label="Readiness" value={peadReadiness.value} meta={peadReadiness.meta} tone={peadReadiness.tone} />
               </div>
               <div className="border-l-2 border-[var(--accent)] pl-4 text-sm leading-6 text-[var(--muted)]">
                 {String(peadExperiment.summary ?? "PEAD shadow metrics will appear after scans log event_drift windows.")}

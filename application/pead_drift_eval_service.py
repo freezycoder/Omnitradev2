@@ -32,6 +32,8 @@ from domain.evaluation.pead_experiment import (
     verdict_status,
     walk_forward_date_blocks,
 )
+from domain.research.lifecycle import EXPERIMENT_PEAD
+from domain.research.promotion import annotate_calibration_payload
 from domain.scoring.pead_shadow import size_bucket_for_market_cap
 from storage.repositories.outcome_repository import OutcomeRepository
 
@@ -88,44 +90,47 @@ class PeadDriftEvalService:
             self._bucket_payload(events, abs_cut, held_out_dates={event.event_date for event in held_out})
             for abs_cut in SURPRISE_ABS_CUTS_PCT
         ]
-        return {
-            "mode": "shadow",
-            "automatic_activation": False,
-            "live_score_changes": False,
-            "protocol": protocol_payload(),
-            "verdict": verdict,
-            "status": verdict_status(verdict),
-            "summary": self._summary(verdict, confirmatory, primary, held_out, coverage),
-            "coverage": coverage,
-            "skipped_snapshots": skipped,
-            "primary_bucket": surprise_bucket_label(PRIMARY_SURPRISE_ABS_PCT),
-            "primary_event_count": len(primary),
-            "oos_event_count": len(held_out),
-            "walk_forward_folds": [self._fold_payload(fold, primary) for fold in folds],
-            "confirmatory_horizons": confirmatory,
-            "horizon_tests": horizon_rows,
-            "decay_curve": decay_curve(primary),
-            "surprise_buckets": bucket_rows,
-            "secondary_size": descriptive_strata(
-                primary,
-                20,
-                key=lambda event: event.size_bucket,
-                label="size_bucket",
-            ),
-            "secondary_sector": descriptive_strata(
-                primary,
-                20,
-                key=lambda event: event.sector or "unknown",
-                label="sector",
-            ),
-            "secondary_event_date_source": descriptive_strata(
-                primary,
-                20,
-                key=lambda event: event.event_date_source,
-                label="event_date_source",
-            ),
-            "diagnostic": self._diagnostic(verdict, confirmatory, coverage),
-        }
+        return annotate_calibration_payload(
+            {
+                "mode": "shadow",
+                "automatic_activation": False,
+                "live_score_changes": False,
+                "protocol": protocol_payload(),
+                "verdict": verdict,
+                "status": verdict_status(verdict),
+                "summary": self._summary(verdict, confirmatory, primary, held_out, coverage),
+                "coverage": coverage,
+                "skipped_snapshots": skipped,
+                "primary_bucket": surprise_bucket_label(PRIMARY_SURPRISE_ABS_PCT),
+                "primary_event_count": len(primary),
+                "oos_event_count": len(held_out),
+                "walk_forward_folds": [self._fold_payload(fold, primary) for fold in folds],
+                "confirmatory_horizons": confirmatory,
+                "horizon_tests": horizon_rows,
+                "decay_curve": decay_curve(primary),
+                "surprise_buckets": bucket_rows,
+                "secondary_size": descriptive_strata(
+                    primary,
+                    20,
+                    key=lambda event: event.size_bucket,
+                    label="size_bucket",
+                ),
+                "secondary_sector": descriptive_strata(
+                    primary,
+                    20,
+                    key=lambda event: event.sector or "unknown",
+                    label="sector",
+                ),
+                "secondary_event_date_source": descriptive_strata(
+                    primary,
+                    20,
+                    key=lambda event: event.event_date_source,
+                    label="event_date_source",
+                ),
+                "diagnostic": self._diagnostic(verdict, confirmatory, coverage),
+            },
+            experiment_id=EXPERIMENT_PEAD,
+        )
 
     def _load_events(self) -> tuple[list[PeadEventObservation], int, dict[str, Any]]:
         if self._provided_events is not None:
