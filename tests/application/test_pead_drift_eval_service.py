@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import sqlite3
 from datetime import date, timedelta
 
 from application.pead_drift_eval_service import PeadDriftEvalService
@@ -130,3 +132,84 @@ def test_decide_verdict_is_data_blocked_when_no_horizon_is_testable():
     assert decide_verdict([{"sessions": 20, "passed": False, "testable": False}]) == "data_blocked"
     assert decide_verdict([{"sessions": 20, "passed": False, "testable": True}]) == "fail"
     assert decide_verdict([{"sessions": 60, "passed": True, "testable": True}]) == "success"
+
+
+class _SqliteOutcomeRepository:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def ensure_schema(self):
+        return None
+
+    def list_calibration_observations(self):
+        return self._rows
+
+
+def test_pead_eval_reads_sqlite_row_objects_without_get():
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    connection.execute(
+        "create table observations (ticker text, created_at text, feature_snapshot_json text)"
+    )
+    snapshot = {
+        "ticker": "AAPL",
+        "earnings_intelligence": {
+            "event_drift": [
+                {
+                    "event_date": "2024-01-15",
+                    "period": "2023-12-31",
+                    "surprise_pct": 8.0,
+                    "event_date_source": "sec_filing",
+                    "sector": "Technology",
+                    "size_bucket": "large",
+                    "market_cap": 2_000_000_000_000,
+                    "horizons": [
+                        {
+                            "sessions": 3,
+                            "complete": True,
+                            "stock_return_pct": 1.0,
+                            "market_excess_pct": 0.5,
+                            "sector_excess_pct": 0.4,
+                        },
+                        {
+                            "sessions": 10,
+                            "complete": True,
+                            "stock_return_pct": 2.0,
+                            "market_excess_pct": 1.0,
+                            "sector_excess_pct": 0.8,
+                        },
+                        {
+                            "sessions": 20,
+                            "complete": True,
+                            "stock_return_pct": 3.0,
+                            "market_excess_pct": 1.5,
+                            "sector_excess_pct": 1.2,
+                        },
+                        {
+                            "sessions": 60,
+                            "complete": True,
+                            "stock_return_pct": 4.0,
+                            "market_excess_pct": 2.0,
+                            "sector_excess_pct": 1.6,
+                        },
+                    ],
+                }
+            ]
+        },
+    }
+    connection.execute(
+        "insert into observations values (?, ?, ?)",
+        ("AAPL", "2024-02-01T00:00:00", json.dumps(snapshot)),
+    )
+    row = connection.execute("select * from observations").fetchone()
+    assert not hasattr(row, "get")
+
+    payload = PeadDriftEvalService(
+        outcome_repository=_SqliteOutcomeRepository([row])
+    ).build_payload()
+
+    assert payload["verdict"] == "data_blocked"
+    assert payload["cannot_flip_live"] is True
+    assert payload["live_score_changes"] is False
+    assert payload["primary_event_count"] == 1
+    assert payload["automatic_activation"] is False

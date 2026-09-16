@@ -145,8 +145,9 @@ class PeadDriftEvalService:
         skipped = 0
         snapshots = 0
         tickers: set[str] = set()
-        for row in self._outcome_repository.list_calibration_observations():
+        for raw_row in self._outcome_repository.list_calibration_observations():
             snapshots += 1
+            row = _row_dict(raw_row)
             ticker = str(row.get("ticker") or "").upper().strip()
             if ticker:
                 tickers.add(ticker)
@@ -303,7 +304,18 @@ class PeadDriftEvalService:
         }
 
 
-def _events_from_row(row: Mapping[str, Any]) -> list[PeadEventObservation] | None:
+def _row_dict(row: Any) -> dict[str, Any]:
+    if isinstance(row, dict):
+        return row
+    if hasattr(row, "keys"):
+        return {key: row[key] for key in row.keys()}
+    if isinstance(row, Mapping):
+        return dict(row)
+    return {}
+
+
+def _events_from_row(row: Mapping[str, Any] | Any) -> list[PeadEventObservation] | None:
+    row = _row_dict(row)
     try:
         snapshot = json.loads(row.get("feature_snapshot_json") or "{}")
     except (TypeError, ValueError, json.JSONDecodeError):
