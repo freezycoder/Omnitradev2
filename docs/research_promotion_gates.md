@@ -68,4 +68,5 @@ without changing live impact (still zero):
 - `group_rs` — existing relative-strength shadow layer
 - `pead` — earnings-intelligence post-filing 3-session move
 - `form4` — Form 4 open-market insider flow inside the SEC overlay
+- `form144` — Form 144 proposed-sale intent radar (shadow match study; not alpha)
 - `finra_short_vol` — registered UNVERIFIED placeholder; no signal implemented
