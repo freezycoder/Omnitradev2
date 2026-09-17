@@ -207,6 +207,7 @@ EXPERIMENT_PEAD = "pead"
 EXPERIMENT_FORM4 = "form4"
 EXPERIMENT_FINRA_SHORT_VOL = "finra_short_vol"
 EXPERIMENT_EARNINGS_INTELLIGENCE = "earnings_intelligence"
+EXPERIMENT_KCRORO_REGIME = "kcroro_regime_gate"
 
 EXPERIMENTS: tuple[ShadowExperiment, ...] = (
     ShadowExperiment(
@@ -254,6 +255,17 @@ EXPERIMENTS: tuple[ShadowExperiment, ...] = (
         implemented=True,
         notes="Existing earnings-intelligence shadow layer, including PEAD filing-window evidence.",
     ),
+    ShadowExperiment(
+        experiment_id=EXPERIMENT_KCRORO_REGIME,
+        name="KCRORO risk-on/off regime gate",
+        plumbing="domain.scoring.kcroro_regime / application.kcroro_regime_eval_service",
+        implemented=True,
+        notes=(
+            "Shadow-only long-screen throttle on frozen daily KCRORO level/20d shock-sum. "
+            "Nested kill switch versus KEEP HY OAS + NFCI; equity-leg ablation. "
+            "Applied impact stays 0. Cite KC Fed RWP 24-12."
+        ),
+    ),
 )
 
 IN_FLIGHT_EXPERIMENT_IDS: tuple[str, ...] = (
@@ -261,6 +273,7 @@ IN_FLIGHT_EXPERIMENT_IDS: tuple[str, ...] = (
     EXPERIMENT_PEAD,
     EXPERIMENT_FORM4,
     EXPERIMENT_FINRA_SHORT_VOL,
+    EXPERIMENT_KCRORO_REGIME,
 )
 
 
@@ -531,6 +544,7 @@ __all__ = [
     "EXPERIMENT_FINRA_SHORT_VOL",
     "EXPERIMENT_FORM4",
     "EXPERIMENT_GROUP_RS",
+    "EXPERIMENT_KCRORO_REGIME",
     "EXPERIMENT_PEAD",
     "EXPERIMENTS",
     "FORBIDDEN_AUTO_PROMOTE",

@@ -125,3 +125,21 @@ def render_calibration_page(calibration_results: dict) -> None:
         )
     else:
         st.info("No threshold-filter comparison is available yet.")
+
+    with st.expander("Shadow research · KC Fed KCRORO regime gate", expanded=False):
+        st.caption("UNVERIFIED candidate. Applied impact is 0. Does not change live recommendations.")
+        st.write(
+            "Daily Kansas City Fed Risk-On Risk-Off Index (FRED KCRORO) is a frozen "
+            "long-screen throttle: cut aggressiveness when the latest released print "
+            "is positive or the 20-session shock sum is positive. Nested kill versus "
+            "KEEP HY OAS + NFCI. Equity-leg ablation drops KCROROE."
+        )
+        st.write(
+            "Chari, Dilts Stedman, and Lundblad, 2024, Federal Reserve Bank of Kansas "
+            "City Research Working Paper 24-12. Positive ≈ risk-off."
+        )
+        st.markdown(
+            "[FRED KCRORO](https://fred.stlouisfed.org/series/KCRORO) · "
+            "[KC Fed RORO](https://www.kansascityfed.org/data-and-trends/risk-on-risk-off-index/) · "
+            "[methodology README](https://www.kansascityfed.org/documents/10930/RORO_Index_README.pdf)"
+        )
