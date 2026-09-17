@@ -133,7 +133,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [pathname]);
 
   const currentItem = rawNavGroups
     .flatMap((group) => group.items)

@@ -144,9 +144,9 @@ class EtfService:
         log_signals: bool = False,
     ) -> dict[str, Any]:
         if not refresh:
-            cached = load_named_scan_cache(ETF_SCREENER_CACHE_KEY)
-            if cached:
-                return self._filter_screener(cached, filters)
+            cached = self.cached_screener(filters)
+            if cached is not None:
+                return cached
         tickers = list(DEFAULT_ETF_UNIVERSE)
         profiles = []
         failures: list[str] = []
@@ -426,6 +426,12 @@ class EtfService:
             )
         results.sort(key=lambda item: item.exposure_score, reverse=True)
         return [item.to_dict() for item in results]
+
+    def cached_screener(self, filters: EtfUniverseFilters | None = None) -> dict[str, Any] | None:
+        cached = load_named_scan_cache(ETF_SCREENER_CACHE_KEY)
+        if not cached:
+            return None
+        return self._filter_screener(cached, filters)
 
     def _filter_screener(self, payload: dict[str, Any], filters: EtfUniverseFilters | None) -> dict[str, Any]:
         rows = list(payload.get("rows") or [])
