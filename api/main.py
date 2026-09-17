@@ -1037,22 +1037,59 @@ async def etf_screener(
         min_average_volume=min_average_volume,
         min_dividend_yield=min_dividend_yield,
     )
-    return await _run_service(
-        "etf_screener",
-        lambda: EtfService().build_screener(filters, refresh=refresh, log_signals=refresh),
-        timeout_seconds=120.0,
-    )
+    try:
+        return await _run_service(
+            "etf_screener",
+            lambda: EtfService().build_screener(filters, refresh=refresh, log_signals=refresh),
+            timeout_seconds=120.0,
+        )
+    except HTTPException as exc:
+        if exc.status_code != 504:
+            raise
+        cached = EtfService().cached_screener(filters)
+        if cached is None:
+            raise
+        cached = {
+            **cached,
+            "api_note": "The live ETF refresh timed out. Showing the cached universe.",
+        }
+        return _json_response(cached)
+
+
+def _compare_etfs(tickers: list[str]) -> Any:
+    from application.etf_service import EtfService
+
+    try:
+        return EtfService().compare(tickers)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"error": "invalid_compare", "message": str(exc)}) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        text = str(exc)
+        if "404" in text or "HTTP Error" in text:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "invalid_compare",
+                    "message": f"One or more ETF symbols could not be loaded: {text}",
+                },
+            ) from exc
+        raise
 
 
 @app.get("/api/etf/compare")
 async def etf_compare(symbols: str = Query(..., description="Comma-separated ETF tickers")) -> Any:
-    from application.etf_service import EtfService
-
     tickers = [item.strip() for item in symbols.split(",") if item.strip()]
-    try:
-        return await _run_service("etf_compare", lambda: EtfService().compare(tickers), timeout_seconds=120.0)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail={"error": "invalid_compare", "message": str(exc)}) from exc
+    if len(tickers) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_compare",
+                "message": "Select two or more ETFs to compare.",
+            },
+        )
+    return await _run_service("etf_compare", lambda: _compare_etfs(tickers), timeout_seconds=120.0)
 
 
 @app.get("/api/etf/exposure/{ticker}")

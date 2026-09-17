@@ -24,6 +24,7 @@ const columns: DataTableColumn<Row>[] = [
   },
   { key: "name", header: "Name", render: (row) => String(row.name ?? "Data unavailable") },
   { key: "category", header: "Category", render: (row) => String(row.category ?? "Data unavailable") },
+  { key: "geography", header: "Geography", render: (row) => String(row.geography ?? "Data unavailable") },
   { key: "price", header: "Price", align: "right", render: (row) => formatAvailable(row.price, (value) => value.toFixed(2)) },
   { key: "return_1d", header: "1D %", align: "right", render: (row) => formatAvailable(row.return_1d, (value) => formatSignedPct(value, 2)) },
   { key: "return_1w", header: "1W %", align: "right", render: (row) => formatAvailable(row.return_1w, (value) => formatSignedPct(value, 2)) },
@@ -165,7 +166,15 @@ export function EtfScreenerPage() {
           </label>
         </form>
         {error ? <p className="mb-3 text-sm text-[var(--red)]">{error}</p> : null}
-        <DataTable rows={rows} columns={columns} emptyLabel="No ETF rows are cached yet. Refresh the universe to pull provider data." />
+        <DataTable
+          rows={rows}
+          columns={columns}
+          emptyLabel={
+            pickArray(data?.rows).length > 0
+              ? "No ETF rows match these filters. Geography is often blank until holdings exposure is cached — clear Geography or refresh the universe."
+              : "No ETF rows are cached yet. Refresh the universe to pull provider data."
+          }
+        />
       </TerminalPanel>
       <TerminalPanel title="Underlying signal exposure" eyebrow="Stock thesis expressed through ETF holdings">
         <DataTable
