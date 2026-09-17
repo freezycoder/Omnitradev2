@@ -136,6 +136,27 @@ class EtfService:
             "results": [profile.to_dict() for profile in page],
         }
 
+    def empty_screener(self, *, message: str, refresh_status: str = "idle") -> dict[str, Any]:
+        return {
+            "updated_at": None,
+            "source": "unavailable",
+            "universe_name": ETF_UNIVERSE_NAME,
+            "universe": list(DEFAULT_ETF_UNIVERSE),
+            "asset_type": AssetType.ETF,
+            "rows": [],
+            "failures": [],
+            "filtered_count": 0,
+            "note": "ETF OmniScore is a research composite and is not a validated forecast.",
+            "refresh_status": refresh_status,
+            "api_note": message,
+        }
+
+    def cached_screener(self, filters: EtfUniverseFilters | None = None) -> dict[str, Any] | None:
+        cached = load_named_scan_cache(ETF_SCREENER_CACHE_KEY)
+        if not cached:
+            return None
+        return self._filter_screener(cached, filters)
+
     def build_screener(
         self,
         filters: EtfUniverseFilters | None = None,
@@ -144,15 +165,19 @@ class EtfService:
         log_signals: bool = False,
     ) -> dict[str, Any]:
         if not refresh:
-            cached = load_named_scan_cache(ETF_SCREENER_CACHE_KEY)
+            cached = self.cached_screener(filters)
             if cached:
-                return self._filter_screener(cached, filters)
+                return {**cached, "refresh_status": cached.get("refresh_status") or "idle"}
+            return self.empty_screener(
+                message="No ETF rows are cached yet. Use Refresh cache to pull provider data in the background."
+            )
+
         tickers = list(DEFAULT_ETF_UNIVERSE)
         profiles = []
         failures: list[str] = []
         for ticker in tickers:
             try:
-                profile = self.get_profile(ticker, refresh=refresh)
+                profile = self.get_profile(ticker, refresh=True)
             except Exception:
                 profile = None
                 failures.append(f"{ticker}: profile unavailable")
@@ -167,7 +192,9 @@ class EtfService:
         for profile in profiles:
             history = histories.get(profile.ticker, pd.DataFrame())
             metrics = build_performance_metrics(history)
-            holdings = self.get_holdings(profile.ticker, refresh=refresh)
+            # Screener uses cached holdings only. Live holdings stay on the analysis page
+            # so a 40-ETF universe refresh can finish without one yfinance scrape per fund.
+            holdings = self._repository.get_holdings(profile.ticker, require_fresh=False)
             underlying_score, coverage, _contributors = thematic_exposure_score(
                 holdings.holdings if holdings else (),
                 stock_scores,
@@ -215,6 +242,18 @@ class EtfService:
                         "omni_score": omni.score,
                     }
                 )
+            payload = {
+                "updated_at": _now(),
+                "source": "live",
+                "universe_name": ETF_UNIVERSE_NAME,
+                "universe": tickers,
+                "asset_type": AssetType.ETF,
+                "rows": rows,
+                "failures": failures,
+                "partial": len(rows) < len(profiles),
+                "note": "ETF OmniScore is a research composite and is not a validated forecast.",
+            }
+            save_named_scan_cache(ETF_SCREENER_CACHE_KEY, _json_safe_screener(payload))
         payload = {
             "updated_at": _now(),
             "source": "live",
@@ -223,6 +262,7 @@ class EtfService:
             "asset_type": AssetType.ETF,
             "rows": rows,
             "failures": failures,
+            "partial": False,
             "note": "ETF OmniScore is a research composite and is not a validated forecast.",
         }
         save_named_scan_cache(ETF_SCREENER_CACHE_KEY, _json_safe_screener(payload))

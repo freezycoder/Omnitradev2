@@ -125,7 +125,15 @@ export type WatchlistItem = {
   source?: string;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_OMNITRADE_API_URL ?? "http://127.0.0.1:8788";
+function resolveApiBase(): string {
+  if (typeof window !== "undefined") {
+    const injected = (window as unknown as { __OMNITRADE_API_BASE__?: string }).__OMNITRADE_API_BASE__;
+    if (injected) {
+      return injected.replace(/\/$/, "");
+    }
+  }
+  return (process.env.NEXT_PUBLIC_OMNITRADE_API_URL ?? "http://127.0.0.1:8788").replace(/\/$/, "");
+}
 const OVERVIEW_TIMEOUT_MS = 12_000;
 const REFRESH_KICKOFF_TIMEOUT_MS = 12_000;
 const REFRESH_POLL_INTERVAL_MS = 5_000;
@@ -304,7 +312,7 @@ export function applyScanFreshnessPolicy(
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${resolveApiBase()}${path}`, {
     cache: "no-store",
     headers: {
       Accept: "application/json",
@@ -329,9 +337,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 async function fetchSavedRealScan(universe: "global" | "international"): Promise<ScanPayload | null> {
   try {
-    const response = await fetch(`/api/saved-scan?universe=${universe}`, { cache: "no-store" });
-    if (!response.ok) return null;
-    return response.json() as Promise<ScanPayload>;
+    const scanModule =
+      universe === "international"
+        ? await import("@/data/international-scan.json")
+        : await import("@/data/global-scan.json");
+    const savedScan = (scanModule.default ?? scanModule) as unknown as ScanPayload;
+    return applyScanFreshnessPolicy(savedScan, "cached_real");
   } catch {
     return null;
   }
@@ -623,9 +634,20 @@ export type EtfScreenerPayload = {
   rows?: ApiRecord[];
   failures?: string[];
   note?: string;
+  api_note?: string;
+  refresh_status?: "idle" | "running" | "complete" | "failed";
+  partial?: boolean;
 };
 
 export type EtfAnalysisPayload = ApiRecord;
+
+export async function fetchEtfRefreshStatus(): Promise<RefreshStatusPayload> {
+  try {
+    return await request<RefreshStatusPayload>("/api/etf/refresh-status");
+  } catch {
+    return { refresh_status: "idle", status: "idle" };
+  }
+}
 
 export function fetchEtfScreener(filters: Record<string, string> = {}, refresh = false): Promise<EtfScreenerPayload> {
   const params = new URLSearchParams(filters);
