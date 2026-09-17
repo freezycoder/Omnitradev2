@@ -53,11 +53,52 @@ def test_user_mutations_are_blocked_by_default(monkeypatch, operation):
 
 def test_capabilities_endpoint_reports_read_only_by_default(monkeypatch):
     monkeypatch.delenv("OMNITRADE_WRITE_MODE", raising=False)
+    monkeypatch.delenv("OMNITRADE_ADMIN", raising=False)
 
     payload = main.api_capabilities()
 
     assert payload["write_mode"] == "read_only"
     assert payload["user_mutations_enabled"] is False
+    assert payload["admin_access_enabled"] is False
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "calibration",
+        "performance_lab",
+        "long_term_performance",
+    ],
+)
+def test_validation_endpoints_require_admin_in_read_only_mode(monkeypatch, endpoint):
+    monkeypatch.delenv("OMNITRADE_WRITE_MODE", raising=False)
+    monkeypatch.delenv("OMNITRADE_ADMIN", raising=False)
+
+    with pytest.raises(HTTPException) as exc_info:
+        if endpoint == "calibration":
+            asyncio.run(main.calibration())
+        elif endpoint == "performance_lab":
+            asyncio.run(main.performance_lab())
+        else:
+            asyncio.run(main.long_term_performance())
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail["error"] == "admin_access_required"
+    assert "restricted to administrators" in exc_info.value.detail["message"]
+
+
+def test_validation_endpoints_accessible_in_local_admin_mode(monkeypatch):
+    monkeypatch.setenv("OMNITRADE_WRITE_MODE", "local")
+    monkeypatch.setenv("OMNITRADE_ADMIN", "1")
+
+    ran = []
+    async def fake_run_service(name, fn, **kw):
+        ran.append(name)
+        return {"status": "ok"}
+
+    monkeypatch.setattr(main, "_run_service", fake_run_service)
+    asyncio.run(main.calibration())
+    assert "calibration" in ran
 
 
 def test_cors_allows_only_declared_methods_without_credentials():

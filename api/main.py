@@ -126,6 +126,21 @@ def _require_user_mutation(operation: str) -> None:
     )
 
 
+def _require_admin_access(area: str) -> None:
+    capabilities = api_capabilities_snapshot()
+    if capabilities.get("admin_access_enabled"):
+        return
+    log.warning("Blocked access to %s because admin access is not enabled", area)
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "error": "admin_access_required",
+            "area": area,
+            "message": f"{area} is restricted to administrators.",
+        },
+    )
+
+
 def _dataframe_to_records(frame: Any) -> list[dict[str, Any]]:
     import pandas as pd
 
@@ -821,6 +836,7 @@ async def performance_lab(
     ticker: str | None = None,
     strategy_family: str | None = None,
 ) -> Any:
+    _require_admin_access("performance_lab")
     normalized_price_mode = _validate_price_mode(price_mode)
     normalized_asset_type = asset_type.strip().upper() or "ALL"
     if normalized_asset_type not in {"ALL", "STOCK", "ETF"}:
@@ -848,6 +864,7 @@ async def performance_lab(
 @app.post("/api/performance-log")
 async def performance_log(payload: PerformanceLogMutation) -> Any:
     _require_user_mutation("performance_log")
+    _require_admin_access("performance_log")
 
     def log_and_invalidate() -> dict[str, Any]:
         result = _log_performance_entry(payload)
@@ -859,6 +876,7 @@ async def performance_log(payload: PerformanceLogMutation) -> Any:
 
 @app.get("/api/calibration")
 async def calibration() -> Any:
+    _require_admin_access("calibration")
     return await _run_service(
         "calibration",
         lambda: _cached_analytics_payload(
@@ -871,6 +889,7 @@ async def calibration() -> Any:
 
 @app.get("/api/long-term-performance")
 async def long_term_performance() -> Any:
+    _require_admin_access("long_term_performance")
     return await _run_service("long_term_performance", _long_term_performance_payload)
 
 

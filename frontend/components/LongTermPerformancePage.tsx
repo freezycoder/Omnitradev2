@@ -47,10 +47,29 @@ const openColumns: DataTableColumn<Row>[] = [
   { key: "days_to_maturity", header: "Maturity", align: "right" }
 ];
 
+function AdminAccessDenied({ area }: { area: string }) {
+  return (
+    <div className="space-y-4">
+      <SectionHeader title={area} badge="Admin Restricted" />
+      <TerminalPanel title="Administrator Access Required" eyebrow="Restricted area">
+        <div className="space-y-3 text-sm text-[var(--muted)]">
+          <div className="text-base text-white">This area is only visible and accessible to administrators.</div>
+          <p>
+            Validation surfaces (Performance Lab, Long-Term Performance, and Calibration) are restricted to
+            authorized administrators. If this instance is running in public or read-only mode, set{" "}
+            <code className="text-[var(--accent-strong)]">OMNITRADE_ADMIN=1</code> in the server environment to enable access.
+          </p>
+        </div>
+      </TerminalPanel>
+    </div>
+  );
+}
+
 export function LongTermPerformancePage() {
   const [data, setData] = useState<LongTermPerformancePayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -59,7 +78,13 @@ export function LongTermPerformancePage() {
         if (active) setData(payload);
       })
       .catch((err: Error) => {
-        if (active) setError(err.message);
+        if (active) {
+          if (err.message.includes("403") || err.message.toLowerCase().includes("restricted to administrators")) {
+            setAccessDenied(true);
+          } else {
+            setError(err.message);
+          }
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -68,6 +93,10 @@ export function LongTermPerformancePage() {
       active = false;
     };
   }, []);
+
+  if (accessDenied) {
+    return <AdminAccessDenied area="Long-Term Performance" />;
+  }
 
   const overall = pickRecord(data?.overall);
   const byHorizon = pickArray(data?.by_horizon);
