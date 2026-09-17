@@ -41,6 +41,7 @@ def test_ttl_cache_expires_and_can_be_invalidated() -> None:
 
 def test_performance_route_caches_expensive_payload(monkeypatch) -> None:
     calls: list[str] = []
+    monkeypatch.setenv("OMNITRADE_WRITE_MODE", "local")
     main._ANALYTICS_RESPONSE_CACHE.invalidate()
     monkeypatch.setattr(
         main,
@@ -58,6 +59,7 @@ def test_performance_route_caches_expensive_payload(monkeypatch) -> None:
 
 def test_calibration_route_caches_clustered_research_payload(monkeypatch) -> None:
     calls: list[int] = []
+    monkeypatch.setenv("OMNITRADE_WRITE_MODE", "local")
     main._ANALYTICS_RESPONSE_CACHE.invalidate()
     monkeypatch.setattr(
         main,

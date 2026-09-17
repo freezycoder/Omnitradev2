@@ -9,6 +9,7 @@ export type ApiCapabilities = {
   user_mutations_enabled: boolean;
   performance_log_mutations_enabled: boolean;
   watchlist_mutations_enabled: boolean;
+  admin_access_enabled?: boolean;
   message: string;
 };
 
@@ -17,6 +18,7 @@ export const READ_ONLY_API_CAPABILITIES: ApiCapabilities = {
   user_mutations_enabled: false,
   performance_log_mutations_enabled: false,
   watchlist_mutations_enabled: false,
+  admin_access_enabled: false,
   message: "Write access could not be verified, so mutation controls are disabled."
 };
 

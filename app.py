@@ -7,6 +7,7 @@ from application.long_term_performance_service import LongTermPerformanceService
 from application.performance_lab_service import PerformanceLabService
 from application.scan_service import run_scan
 from application.ticker_service import build_ticker_analysis
+from config.access import is_admin_access_enabled
 from config.labels import DATA_MODE_LABELS, NAV_PAGES
 from config.settings import SOURCE_CONFIG, settings
 from config.universe import UNIVERSE_REGISTRY
@@ -164,7 +165,13 @@ def main() -> None:
         </div>""",
         unsafe_allow_html=True,
     )
-    for page_name, icon in NAV_BUTTONS:
+    admin_enabled = is_admin_access_enabled()
+    visible_nav_buttons = [
+        (name, icon)
+        for name, icon in NAV_BUTTONS
+        if admin_enabled or name not in {"Performance Lab", "Long-Term Performance", "Calibration"}
+    ]
+    for page_name, icon in visible_nav_buttons:
         is_active = st.session_state["nav_page"] == page_name
         if st.sidebar.button(
             f"{icon}  {page_name}",
@@ -174,6 +181,8 @@ def main() -> None:
         ):
             st.session_state["nav_page"] = page_name
             st.rerun()
+    if not admin_enabled and st.session_state["nav_page"] in {"Performance Lab", "Long-Term Performance", "Calibration"}:
+        st.session_state["nav_page"] = "Overview"
     selected_page = st.session_state["nav_page"]
 
     st.sidebar.markdown(

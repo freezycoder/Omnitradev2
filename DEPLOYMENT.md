@@ -84,6 +84,13 @@ authentication. Keep `OMNITRADE_WRITE_MODE=read_only`, protect provider quotas
 with the hosting platform's rate limiting, and never place provider keys in
 `NEXT_PUBLIC_*` variables or commit them to Git.
 
+Validation and research surfaces (Performance Lab, Long-Term Performance, and
+Calibration) are restricted to administrators. In `read_only` mode, the
+frontend navigation hides these routes and the API endpoints return 403 Forbidden
+unless `OMNITRADE_ADMIN=1` is explicitly set in the backend environment. Local
+development mode (`OMNITRADE_WRITE_MODE=local`) enables administrator access by
+default.
+
 ## Data persistence
 
 The repository includes a compressed seed containing the existing AI-picked

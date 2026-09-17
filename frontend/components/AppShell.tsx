@@ -3,8 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import { ApiCapabilities, fetchApiCapabilities, READ_ONLY_API_CAPABILITIES } from "@/lib/api";
 import { RouteTransition } from "./RouteTransition";
 
 type NavigationItem = {
@@ -13,12 +14,13 @@ type NavigationItem = {
   code: string;
   index: string;
   match?: string[];
+  adminOnly?: boolean;
 };
 
 const scannerRoutes = ["/overview", "/long-term", "/short-term", "/international"];
 const etfRoutes = ["/etf", "/etf/compare"];
 
-const navGroups: { label: string; index: string; items: NavigationItem[] }[] = [
+const rawNavGroups: { label: string; index: string; adminOnly?: boolean; items: NavigationItem[] }[] = [
   {
     label: "Research",
     index: "01",
@@ -37,10 +39,11 @@ const navGroups: { label: string; index: string; items: NavigationItem[] }[] = [
   {
     label: "Validation",
     index: "03",
+    adminOnly: true,
     items: [
-      { href: "/performance", label: "Performance Lab", code: "LAB", index: "06" },
-      { href: "/long-term-performance", label: "Long-Term Performance", code: "LONG", index: "07" },
-      { href: "/calibration", label: "Calibration", code: "CAL", index: "08" }
+      { href: "/performance", label: "Performance Lab", code: "LAB", index: "06", adminOnly: true },
+      { href: "/long-term-performance", label: "Long-Term Performance", code: "LONG", index: "07", adminOnly: true },
+      { href: "/calibration", label: "Calibration", code: "CAL", index: "08", adminOnly: true }
     ]
   }
 ];
@@ -56,14 +59,25 @@ function isActive(pathname: string, item: NavigationItem) {
 
 function NavigationGroups({
   pathname,
+  capabilities,
   onNavigate
 }: {
   pathname: string;
+  capabilities: ApiCapabilities;
   onNavigate?: () => void;
 }) {
+  const isAdmin = Boolean(capabilities.admin_access_enabled);
+  const visibleGroups = rawNavGroups
+    .filter((group) => !group.adminOnly || isAdmin)
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.adminOnly || isAdmin)
+    }))
+    .filter((group) => group.items.length > 0);
+
   return (
     <div className="space-y-8">
-      {navGroups.map((group) => (
+      {visibleGroups.map((group) => (
         <div key={group.label}>
           <div className="mono mb-3 px-3 text-[10px] uppercase tracking-[0.24em] text-[var(--dim)]">
             {group.index} / {group.label}
@@ -105,7 +119,23 @@ function NavigationGroups({
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const currentItem = navGroups
+  const [capabilities, setCapabilities] = useState<ApiCapabilities>(READ_ONLY_API_CAPABILITIES);
+
+  useEffect(() => {
+    let active = true;
+    fetchApiCapabilities()
+      .then((payload) => {
+        if (active) setCapabilities(payload);
+      })
+      .catch(() => {
+        if (active) setCapabilities(READ_ONLY_API_CAPABILITIES);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const currentItem = rawNavGroups
     .flatMap((group) => group.items)
     .find((item) => isActive(pathname, item));
 
@@ -126,7 +156,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
 
           <nav aria-label="Primary navigation" className="flex-1 px-2">
-            <NavigationGroups pathname={pathname} />
+            <NavigationGroups pathname={pathname} capabilities={capabilities} />
           </nav>
 
           <div className="mt-8 flex items-center gap-3 border-t border-[var(--line-soft)] px-5 pt-5">
@@ -169,7 +199,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
               {mobileMenuOpen ? (
                 <nav id="mobile-navigation" aria-label="Mobile navigation" className="animate-reveal mt-3 border-t border-[var(--line-soft)] pt-3">
-                  <NavigationGroups pathname={pathname} onNavigate={() => setMobileMenuOpen(false)} />
+                  <NavigationGroups pathname={pathname} capabilities={capabilities} onNavigate={() => setMobileMenuOpen(false)} />
                 </nav>
               ) : null}
             </div>
