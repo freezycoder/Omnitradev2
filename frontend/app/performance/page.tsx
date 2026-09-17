@@ -205,13 +205,14 @@ export default function PerformancePage() {
     refresh
   } = usePerformanceLab();
 
-  if (accessDenied) {
-    return <AdminAccessDenied area="Performance Lab" />;
-  }
   const [logEntry, setLogEntry] = useState<PerformanceLogInput>(initialLogEntry);
   const [logStatus, setLogStatus] = useState<string | null>(null);
   const [logError, setLogError] = useState<string | null>(null);
   const [logging, setLogging] = useState(false);
+
+  if (accessDenied) {
+    return <AdminAccessDenied area="Performance Lab" />;
+  }
 
   function updateLogEntry<Key extends keyof PerformanceLogInput>(key: Key, value: PerformanceLogInput[Key]) {
     setLogEntry((current) => ({ ...current, [key]: value }));
