@@ -3,9 +3,18 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
-import { ApiCapabilities, fetchApiCapabilities, READ_ONLY_API_CAPABILITIES } from "@/lib/api";
+import {
+  ADMIN_SESSION_EVENT,
+  ApiCapabilities,
+  clearStoredAdminPassword,
+  fetchApiCapabilities,
+  getStoredAdminPassword,
+  READ_ONLY_API_CAPABILITIES,
+  setStoredAdminPassword,
+  verifyAdminPassword
+} from "@/lib/api";
 import { RouteTransition } from "./RouteTransition";
 
 type NavigationItem = {
@@ -120,24 +129,64 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [capabilities, setCapabilities] = useState<ApiCapabilities>(READ_ONLY_API_CAPABILITIES);
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [adminPasswordInput, setAdminPasswordInput] = useState("");
+  const [adminError, setAdminError] = useState<string | null>(null);
+  const [adminSubmitting, setAdminSubmitting] = useState(false);
 
-  useEffect(() => {
-    let active = true;
+  const refreshCapabilities = () => {
     fetchApiCapabilities()
       .then((payload) => {
-        if (active) setCapabilities(payload);
+        setCapabilities(payload);
       })
       .catch(() => {
-        if (active) setCapabilities(READ_ONLY_API_CAPABILITIES);
+        setCapabilities(READ_ONLY_API_CAPABILITIES);
       });
-    return () => {
-      active = false;
-    };
+  };
+
+  useEffect(() => {
+    refreshCapabilities();
+    window.addEventListener(ADMIN_SESSION_EVENT, refreshCapabilities);
+    return () => window.removeEventListener(ADMIN_SESSION_EVENT, refreshCapabilities);
   }, [pathname]);
+
+  async function handleAdminLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!adminPasswordInput.trim()) {
+      setAdminError("Please enter password.");
+      return;
+    }
+    setAdminSubmitting(true);
+    setAdminError(null);
+    try {
+      await verifyAdminPassword(adminPasswordInput);
+      setStoredAdminPassword(adminPasswordInput);
+      setAdminPasswordInput("");
+      setShowAdminModal(false);
+      refreshCapabilities();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Authentication failed.";
+      if (msg.includes("401") || msg.toLowerCase().includes("incorrect")) {
+        setAdminError("Incorrect password.");
+      } else {
+        setAdminError(msg);
+      }
+    } finally {
+      setAdminSubmitting(false);
+    }
+  }
+
+  function handleAdminLogout() {
+    clearStoredAdminPassword();
+    refreshCapabilities();
+  }
 
   const currentItem = rawNavGroups
     .flatMap((group) => group.items)
     .find((item) => isActive(pathname, item));
+
+  const isAdmin = Boolean(capabilities.admin_access_enabled);
+  const hasStoredPassword = Boolean(getStoredAdminPassword());
 
   return (
     <div className="terminal-grid min-h-screen">
@@ -159,9 +208,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <NavigationGroups pathname={pathname} capabilities={capabilities} />
           </nav>
 
-          <div className="mt-8 flex items-center gap-3 border-t border-[var(--line-soft)] px-5 pt-5">
-            <span aria-hidden="true" className="pulse-dot h-1.5 w-1.5 bg-[var(--green)] text-[var(--green)]" />
-            <span className="mono text-[10px] uppercase tracking-[0.14em] text-[var(--dim)]">Market live // NYS</span>
+          <div className="mt-8 flex flex-col gap-3 border-t border-[var(--line-soft)] px-5 pt-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span aria-hidden="true" className="pulse-dot h-1.5 w-1.5 bg-[var(--green)] text-[var(--green)]" />
+                <span className="mono text-[10px] uppercase tracking-[0.14em] text-[var(--dim)]">Market live // NYS</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between pt-1">
+              <span className="mono text-[10px] uppercase tracking-[0.14em] text-[var(--dim)]">
+                Admin: <span className={isAdmin ? "text-[var(--accent-strong)]" : "text-[var(--dim)]"}>{isAdmin ? "Active" : "Locked"}</span>
+              </span>
+              {isAdmin ? (
+                hasStoredPassword ? (
+                  <button
+                    type="button"
+                    onClick={handleAdminLogout}
+                    className="mono text-[10px] text-[var(--muted)] underline hover:text-[var(--text)]"
+                  >
+                    Lock
+                  </button>
+                ) : null
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAdminModal(true);
+                    setAdminError(null);
+                  }}
+                  className="mono text-[10px] text-[var(--accent)] underline hover:text-[var(--accent-strong)]"
+                >
+                  Unlock
+                </button>
+              )}
+            </div>
           </div>
         </aside>
 
@@ -183,6 +263,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <span className="mono max-w-32 truncate text-[10px] tracking-[0.08em] text-[var(--dim)]">
                     {currentItem?.code ?? "NAV"} / {currentItem?.label ?? "Navigation"}
                   </span>
+                  {isAdmin ? (
+                    hasStoredPassword ? (
+                      <button
+                        type="button"
+                        onClick={handleAdminLogout}
+                        className="mono text-[10px] text-[var(--muted)] underline hover:text-[var(--text)]"
+                      >
+                        Lock
+                      </button>
+                    ) : null
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAdminModal(true);
+                        setAdminError(null);
+                      }}
+                      className="mono text-[10px] text-[var(--accent)] underline hover:text-[var(--accent-strong)]"
+                    >
+                      Unlock
+                    </button>
+                  )}
                   <button
                     type="button"
                     aria-expanded={mobileMenuOpen}
@@ -220,6 +322,55 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </footer>
         </div>
       </div>
+
+      {showAdminModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-sm border border-[var(--line-strong)] bg-[var(--surface)] p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[var(--line-soft)] pb-3">
+              <span className="font-display text-lg tracking-wide uppercase text-white">Unlock Admin Area</span>
+              <button
+                type="button"
+                onClick={() => setShowAdminModal(false)}
+                className="text-xs text-[var(--dim)] hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="mt-3 text-xs leading-5 text-[var(--muted)]">
+              Enter the administrator password to view Performance Lab, Long-Term Performance, and Calibration.
+            </p>
+            <form onSubmit={handleAdminLogin} className="mt-4 space-y-3">
+              <input
+                type="password"
+                placeholder="Password..."
+                value={adminPasswordInput}
+                onChange={(e) => setAdminPasswordInput(e.target.value)}
+                className="field w-full"
+                autoFocus
+                disabled={adminSubmitting}
+              />
+              {adminError ? <div role="alert" className="text-xs text-[var(--red)]">{adminError}</div> : null}
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAdminModal(false)}
+                  className="button text-xs"
+                  disabled={adminSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="button text-xs font-semibold text-white"
+                  disabled={adminSubmitting}
+                >
+                  {adminSubmitting ? "Verifying..." : "Unlock"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

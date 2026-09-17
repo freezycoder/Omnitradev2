@@ -11,13 +11,13 @@ from pathlib import Path
 from threading import Lock, Thread
 from typing import Any, Callable
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from api.response_cache import TtlResponseCache
-from config.access import api_capabilities_snapshot
+from config.access import api_capabilities_snapshot, is_admin_password_valid
 
 
 log = logging.getLogger(__name__)
@@ -40,6 +40,10 @@ _ANALYTICS_RESPONSE_CACHE = TtlResponseCache()
 class WatchlistMutation(BaseModel):
     ticker: str
     source: str = "frontend"
+
+
+class AdminVerifyRequest(BaseModel):
+    password: str
 
 
 class PerformanceLogMutation(BaseModel):
@@ -101,7 +105,7 @@ app.add_middleware(
     allow_origin_regex=_cors_origin_regex(),
     allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "x-admin-password"],
 )
 
 
@@ -126,8 +130,20 @@ def _require_user_mutation(operation: str) -> None:
     )
 
 
-def _require_admin_access(area: str) -> None:
-    capabilities = api_capabilities_snapshot()
+def _header_str(value: Any) -> str | None:
+    if hasattr(value, "default"):
+        value = value.default
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _require_admin_access(area: str, x_admin_password: Any = None) -> None:
+    password = _header_str(x_admin_password)
+    if password and is_admin_password_valid(password):
+        return
+    capabilities = api_capabilities_snapshot(password=password)
     if capabilities.get("admin_access_enabled"):
         return
     log.warning("Blocked access to %s because admin access is not enabled", area)
@@ -822,8 +838,25 @@ def health() -> dict[str, Any]:
 
 
 @app.get("/api/capabilities")
-def api_capabilities() -> dict[str, Any]:
-    return api_capabilities_snapshot()
+def api_capabilities(x_admin_password: Any = Header(default=None)) -> dict[str, Any]:
+    return api_capabilities_snapshot(password=_header_str(x_admin_password))
+
+
+@app.post("/api/admin/verify")
+def admin_verify(payload: AdminVerifyRequest) -> dict[str, Any]:
+    if not is_admin_password_valid(payload.password):
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "invalid_admin_password",
+                "message": "The administrator password entered is incorrect.",
+            },
+        )
+    return {
+        "status": "ok",
+        "admin_access_enabled": True,
+        "message": "Administrator access granted.",
+    }
 
 
 @app.get("/api/performance-lab")
@@ -835,8 +868,9 @@ async def performance_lab(
     asset_type: str = "ALL",
     ticker: str | None = None,
     strategy_family: str | None = None,
+    x_admin_password: str | None = Header(default=None),
 ) -> Any:
-    _require_admin_access("performance_lab")
+    _require_admin_access("performance_lab", x_admin_password=x_admin_password)
     normalized_price_mode = _validate_price_mode(price_mode)
     normalized_asset_type = asset_type.strip().upper() or "ALL"
     if normalized_asset_type not in {"ALL", "STOCK", "ETF"}:
@@ -862,9 +896,12 @@ async def performance_lab(
 
 
 @app.post("/api/performance-log")
-async def performance_log(payload: PerformanceLogMutation) -> Any:
+async def performance_log(
+    payload: PerformanceLogMutation,
+    x_admin_password: str | None = Header(default=None),
+) -> Any:
     _require_user_mutation("performance_log")
-    _require_admin_access("performance_log")
+    _require_admin_access("performance_log", x_admin_password=x_admin_password)
 
     def log_and_invalidate() -> dict[str, Any]:
         result = _log_performance_entry(payload)
@@ -875,8 +912,8 @@ async def performance_log(payload: PerformanceLogMutation) -> Any:
 
 
 @app.get("/api/calibration")
-async def calibration() -> Any:
-    _require_admin_access("calibration")
+async def calibration(x_admin_password: str | None = Header(default=None)) -> Any:
+    _require_admin_access("calibration", x_admin_password=x_admin_password)
     return await _run_service(
         "calibration",
         lambda: _cached_analytics_payload(
@@ -888,8 +925,8 @@ async def calibration() -> Any:
 
 
 @app.get("/api/long-term-performance")
-async def long_term_performance() -> Any:
-    _require_admin_access("long_term_performance")
+async def long_term_performance(x_admin_password: str | None = Header(default=None)) -> Any:
+    _require_admin_access("long_term_performance", x_admin_password=x_admin_password)
     return await _run_service("long_term_performance", _long_term_performance_payload)
 
 
