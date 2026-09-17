@@ -53,7 +53,7 @@ SECRET_PATTERNS = {
     "Anthropic API key": re.compile(rb"sk-ant-[A-Za-z0-9_-]{20,}"),
     "GitHub token": re.compile(rb"(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})"),
     "Google API key": re.compile(rb"AIza[0-9A-Za-z_-]{30,}"),
-    "OpenAI API key": re.compile(rb"sk-(?:proj-)?[A-Za-z0-9_-]{20,}"),
+    "OpenAI API key": re.compile(rb"(?<![A-Za-z0-9])sk-(?:proj-)?[A-Za-z0-9_-]{20,}"),
     "private key": re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     "SendGrid API key": re.compile(rb"SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}"),
     "Slack token": re.compile(rb"xox[baprs]-[A-Za-z0-9-]{10,}"),
