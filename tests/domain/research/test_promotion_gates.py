@@ -9,6 +9,7 @@ from domain.research.lifecycle import (
     EXPERIMENT_FINRA_SHORT_VOL,
     EXPERIMENT_FORM4,
     EXPERIMENT_GROUP_RS,
+    EXPERIMENT_NFCI_REGIME,
     EXPERIMENT_PEAD,
     FORBIDDEN_AUTO_PROMOTE,
     GATE_CHECKLIST,
@@ -117,6 +118,7 @@ def test_in_flight_experiments_are_labeled_unverified_with_zero_live_impact() ->
         EXPERIMENT_PEAD,
         EXPERIMENT_FORM4,
         EXPERIMENT_FINRA_SHORT_VOL,
+        EXPERIMENT_NFCI_REGIME,
     )
     tagged = in_flight_experiments()
     assert {item.experiment_id for item in tagged} == set(IN_FLIGHT_EXPERIMENT_IDS)
