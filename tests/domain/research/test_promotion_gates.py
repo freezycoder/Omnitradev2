@@ -8,6 +8,7 @@ from domain.recommendations.engine import write_live_recommendations
 from domain.research.lifecycle import (
     EXPERIMENT_FINRA_SHORT_VOL,
     EXPERIMENT_FORM4,
+    EXPERIMENT_FORM144,
     EXPERIMENT_GROUP_RS,
     EXPERIMENT_PEAD,
     FORBIDDEN_AUTO_PROMOTE,
@@ -116,6 +117,7 @@ def test_in_flight_experiments_are_labeled_unverified_with_zero_live_impact() ->
         EXPERIMENT_GROUP_RS,
         EXPERIMENT_PEAD,
         EXPERIMENT_FORM4,
+        EXPERIMENT_FORM144,
         EXPERIMENT_FINRA_SHORT_VOL,
     )
     tagged = in_flight_experiments()
@@ -124,6 +126,8 @@ def test_in_flight_experiments_are_labeled_unverified_with_zero_live_impact() ->
     assert all(item.lifecycle_stage is LifecycleStage.CANDIDATE for item in tagged)
     assert all(item.live_applied_impact == 0 for item in tagged)
     assert experiment_by_id(EXPERIMENT_FINRA_SHORT_VOL).implemented is False
+    assert experiment_by_id(EXPERIMENT_FORM144).implemented is True
+    assert experiment_by_id(EXPERIMENT_FORM144).live_applied_impact == 0
 
 
 def test_gate_checklist_covers_the_required_live_set() -> None:

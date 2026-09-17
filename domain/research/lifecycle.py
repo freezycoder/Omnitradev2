@@ -205,6 +205,7 @@ EXPERIMENT_ALTERNATIVE_SIGNALS = "alternative_signals"
 EXPERIMENT_GROUP_RS = "group_rs"
 EXPERIMENT_PEAD = "pead"
 EXPERIMENT_FORM4 = "form4"
+EXPERIMENT_FORM144 = "form144"
 EXPERIMENT_FINRA_SHORT_VOL = "finra_short_vol"
 EXPERIMENT_EARNINGS_INTELLIGENCE = "earnings_intelligence"
 
@@ -242,6 +243,16 @@ EXPERIMENTS: tuple[ShadowExperiment, ...] = (
         notes="Form 4 open-market insider transactions already feed the SEC shadow component.",
     ),
     ShadowExperiment(
+        experiment_id=EXPERIMENT_FORM144,
+        name="Form 144 proposed-sale intent radar",
+        plumbing="domain.research.form144_match_study / domain.scoring.form144_intent",
+        implemented=True,
+        notes=(
+            "Shadow-only Form 144 XML ingest, frozen N/W clusters, and 144→Form4 match "
+            "study. Not an alpha overlay and not a JoF-grade CAR claim. applied_impact stays 0."
+        ),
+    ),
+    ShadowExperiment(
         experiment_id=EXPERIMENT_FINRA_SHORT_VOL,
         name="FINRA short-volume overlay",
         plumbing="unregistered-signal",
@@ -264,6 +275,7 @@ IN_FLIGHT_EXPERIMENT_IDS: tuple[str, ...] = (
     EXPERIMENT_GROUP_RS,
     EXPERIMENT_PEAD,
     EXPERIMENT_FORM4,
+    EXPERIMENT_FORM144,
     EXPERIMENT_FINRA_SHORT_VOL,
 )
 
@@ -534,6 +546,7 @@ __all__ = [
     "EXPERIMENT_EARNINGS_INTELLIGENCE",
     "EXPERIMENT_FINRA_SHORT_VOL",
     "EXPERIMENT_FORM4",
+    "EXPERIMENT_FORM144",
     "EXPERIMENT_GROUP_RS",
     "EXPERIMENT_PEAD",
     "EXPERIMENTS",
