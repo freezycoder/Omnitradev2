@@ -48,6 +48,12 @@ shadow-log 10/20/60-session excess versus SPY and the sector ETF for PEAD
 calibration; those windows never change live scores. Imminent earnings are
 flagged as event risk, never interpreted as bullish or bearish by themselves.
 
+A separate shadow-only credit-regime experiment ingests FRED ICE BofA HY/IG OAS
+and throttles long-screen aggressiveness on a frozen 20-session widening / trailing
+percentile rule. It does not change live recommendations and is not a stock picker.
+See `docs/experiments/credit_hy_oas_regime_gate.md`. ICE-branded values are not
+productized; see `docs/legal/ice_bofa_fred_redistribution.md`.
+
 This product uses the FRED® API but is not endorsed or certified by the
 Federal Reserve Bank of St. Louis.
 
