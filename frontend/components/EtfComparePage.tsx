@@ -32,6 +32,11 @@ export function EtfComparePage() {
   function submit(event: FormEvent) {
     event.preventDefault();
     const tickers = symbols.split(",").map((item) => item.trim().toUpperCase()).filter(Boolean);
+    if (tickers.length < 2) {
+      setData(null);
+      setError("Select two or more ETFs to compare.");
+      return;
+    }
     setLoading(true);
     setError(null);
     fetchEtfCompare(tickers)

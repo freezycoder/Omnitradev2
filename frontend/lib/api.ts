@@ -304,6 +304,12 @@ export function applyScanFreshnessPolicy(
 }
 
 const ADMIN_PASSWORD_STORAGE_KEY = "omnitrade_admin_password";
+export const ADMIN_SESSION_EVENT = "omnitrade:admin-session";
+
+function notifyAdminSessionChange(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(ADMIN_SESSION_EVENT));
+}
 
 export function getStoredAdminPassword(): string | null {
   if (typeof window === "undefined") return null;
@@ -321,6 +327,7 @@ export function setStoredAdminPassword(password: string): void {
   } catch {
     // sessionStorage not available
   }
+  notifyAdminSessionChange();
 }
 
 export function clearStoredAdminPassword(): void {
@@ -330,18 +337,29 @@ export function clearStoredAdminPassword(): void {
   } catch {
     // sessionStorage not available
   }
+  notifyAdminSessionChange();
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+type ApiRequestInit = RequestInit & { skipAdminHeader?: boolean };
+
+async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
   const adminPassword = getStoredAdminPassword();
+  const { skipAdminHeader, headers: initHeaders, ...restInit } = init ?? {};
+  const headers = new Headers(initHeaders);
+  if (!headers.has("Accept")) {
+    headers.set("Accept", "application/json");
+  }
+  if (restInit.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (adminPassword && !skipAdminHeader && !headers.has("x-admin-password")) {
+    headers.set("x-admin-password", adminPassword);
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
     cache: "no-store",
-    headers: {
-      Accept: "application/json",
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...(adminPassword ? { "x-admin-password": adminPassword } : {})
-    },
-    ...init
+    ...restInit,
+    headers
   });
 
   if (!response.ok) {
@@ -572,7 +590,8 @@ export function fetchApiCapabilities(): Promise<ApiCapabilities> {
 export function verifyAdminPassword(password: string): Promise<{ status: string; admin_access_enabled: boolean; message: string }> {
   return request<{ status: string; admin_access_enabled: boolean; message: string }>("/api/admin/verify", {
     method: "POST",
-    body: JSON.stringify({ password })
+    body: JSON.stringify({ password }),
+    skipAdminHeader: true
   });
 }
 

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 import {
+  ADMIN_SESSION_EVENT,
   ApiCapabilities,
   clearStoredAdminPassword,
   fetchApiCapabilities,
@@ -145,6 +146,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     refreshCapabilities();
+    window.addEventListener(ADMIN_SESSION_EVENT, refreshCapabilities);
+    return () => window.removeEventListener(ADMIN_SESSION_EVENT, refreshCapabilities);
   }, []);
 
   async function handleAdminLogin(event: FormEvent<HTMLFormElement>) {
@@ -260,6 +263,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <span className="mono max-w-32 truncate text-[10px] tracking-[0.08em] text-[var(--dim)]">
                     {currentItem?.code ?? "NAV"} / {currentItem?.label ?? "Navigation"}
                   </span>
+                  {isAdmin ? (
+                    hasStoredPassword ? (
+                      <button
+                        type="button"
+                        onClick={handleAdminLogout}
+                        className="mono text-[10px] text-[var(--muted)] underline hover:text-[var(--text)]"
+                      >
+                        Lock
+                      </button>
+                    ) : null
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAdminModal(true);
+                        setAdminError(null);
+                      }}
+                      className="mono text-[10px] text-[var(--accent)] underline hover:text-[var(--accent-strong)]"
+                    >
+                      Unlock
+                    </button>
+                  )}
                   <button
                     type="button"
                     aria-expanded={mobileMenuOpen}
