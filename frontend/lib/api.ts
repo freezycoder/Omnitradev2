@@ -303,12 +303,43 @@ export function applyScanFreshnessPolicy(
   });
 }
 
+const ADMIN_PASSWORD_STORAGE_KEY = "omnitrade_admin_password";
+
+export function getStoredAdminPassword(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return sessionStorage.getItem(ADMIN_PASSWORD_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredAdminPassword(password: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(ADMIN_PASSWORD_STORAGE_KEY, password);
+  } catch {
+    // sessionStorage not available
+  }
+}
+
+export function clearStoredAdminPassword(): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(ADMIN_PASSWORD_STORAGE_KEY);
+  } catch {
+    // sessionStorage not available
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const adminPassword = getStoredAdminPassword();
   const response = await fetch(`${API_BASE}${path}`, {
     cache: "no-store",
     headers: {
       Accept: "application/json",
-      ...(init?.body ? { "Content-Type": "application/json" } : {})
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...(adminPassword ? { "x-admin-password": adminPassword } : {})
     },
     ...init
   });
@@ -536,6 +567,13 @@ export function fetchPerformanceLab(filters?: {
 
 export function fetchApiCapabilities(): Promise<ApiCapabilities> {
   return request<ApiCapabilities>("/api/capabilities");
+}
+
+export function verifyAdminPassword(password: string): Promise<{ status: string; admin_access_enabled: boolean; message: string }> {
+  return request<{ status: string; admin_access_enabled: boolean; message: string }>("/api/admin/verify", {
+    method: "POST",
+    body: JSON.stringify({ password })
+  });
 }
 
 export function logPerformanceOutcome(payload: PerformanceLogInput): Promise<{ status: string; entry: ApiRecord }> {

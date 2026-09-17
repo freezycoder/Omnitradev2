@@ -18,6 +18,7 @@ import { LoadingState } from "@/components/LoadingState";
 import { SectionHeader } from "@/components/SectionHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { TerminalPanel } from "@/components/TerminalPanel";
+import { AdminAccessDenied } from "@/components/AdminAccessDenied";
 import {
   ApiCapabilities,
   fetchApiCapabilities,
@@ -30,24 +31,6 @@ import {
 import { asNumber, formatCurrency, formatPct, formatWeight, pickArray, pickRecord, sentenceCase } from "@/lib/format";
 
 type Row = Record<string, unknown>;
-
-function AdminAccessDenied({ area }: { area: string }) {
-  return (
-    <div className="space-y-4">
-      <SectionHeader title={area} badge="Admin Restricted" />
-      <TerminalPanel title="Administrator Access Required" eyebrow="Restricted area">
-        <div className="space-y-3 text-sm text-[var(--muted)]">
-          <div className="text-base text-white">This area is only visible and accessible to administrators.</div>
-          <p>
-            Validation surfaces (Performance Lab, Long-Term Performance, and Calibration) are restricted to
-            authorized administrators. If this instance is running in public or read-only mode, set{" "}
-            <code className="text-[var(--accent-strong)]">OMNITRADE_ADMIN=1</code> in the server environment to enable access.
-          </p>
-        </div>
-      </TerminalPanel>
-    </div>
-  );
-}
 
 function usePerformanceLab() {
   const [data, setData] = useState<PerformanceLabPayload | null>(null);
@@ -211,7 +194,12 @@ export default function PerformancePage() {
   const [logging, setLogging] = useState(false);
 
   if (accessDenied) {
-    return <AdminAccessDenied area="Performance Lab" />;
+    return (
+      <AdminAccessDenied
+        area="Performance Lab"
+        onUnlocked={refresh}
+      />
+    );
   }
 
   function updateLogEntry<Key extends keyof PerformanceLogInput>(key: Key, value: PerformanceLogInput[Key]) {

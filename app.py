@@ -165,7 +165,8 @@ def main() -> None:
         </div>""",
         unsafe_allow_html=True,
     )
-    admin_enabled = is_admin_access_enabled()
+    admin_password_entered = st.session_state.get("admin_password_input", "")
+    admin_enabled = is_admin_access_enabled(password=admin_password_entered if admin_password_entered else None)
     visible_nav_buttons = [
         (name, icon)
         for name, icon in NAV_BUTTONS
@@ -184,6 +185,24 @@ def main() -> None:
     if not admin_enabled and st.session_state["nav_page"] in {"Performance Lab", "Long-Term Performance", "Calibration"}:
         st.session_state["nav_page"] = "Overview"
     selected_page = st.session_state["nav_page"]
+
+    if not admin_enabled:
+        with st.sidebar.expander("Admin Access", expanded=False):
+            pwd = st.text_input("Password", type="password", key="admin_pwd_field")
+            if st.button("Unlock Admin", use_container_width=True):
+                if is_admin_access_enabled(password=pwd):
+                    st.session_state["admin_password_input"] = pwd
+                    st.success("Admin unlocked")
+                    st.rerun()
+                else:
+                    st.error("Incorrect password")
+    else:
+        if st.session_state.get("admin_password_input"):
+            with st.sidebar.expander("Admin Active", expanded=False):
+                if st.button("Lock Admin", use_container_width=True):
+                    st.session_state.pop("admin_password_input", None)
+                    st.session_state["nav_page"] = "Overview"
+                    st.rerun()
 
     st.sidebar.markdown(
         """<div style="color:var(--text-dim); font-size:0.74rem; margin:1.2rem 0 0.5rem; font-weight:500; letter-spacing:0.08em; text-transform:uppercase;">

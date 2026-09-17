@@ -87,6 +87,49 @@ def test_validation_endpoints_require_admin_in_read_only_mode(monkeypatch, endpo
     assert "restricted to administrators" in exc_info.value.detail["message"]
 
 
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "calibration",
+        "performance_lab",
+        "long_term_performance",
+    ],
+)
+def test_validation_endpoints_allow_access_with_admin_password_header(monkeypatch, endpoint):
+    monkeypatch.delenv("OMNITRADE_WRITE_MODE", raising=False)
+    monkeypatch.delenv("OMNITRADE_ADMIN", raising=False)
+
+    ran = []
+    async def fake_run_service(name, fn, **kw):
+        ran.append(name)
+        return {"status": "ok"}
+
+    monkeypatch.setattr(main, "_run_service", fake_run_service)
+
+    # Calling with valid password header 7180 succeeds
+    if endpoint == "calibration":
+        asyncio.run(main.calibration(x_admin_password="7180"))
+    elif endpoint == "performance_lab":
+        asyncio.run(main.performance_lab(x_admin_password="7180"))
+    else:
+        asyncio.run(main.long_term_performance(x_admin_password="7180"))
+
+    assert endpoint in ran
+
+
+def test_admin_verify_endpoint():
+    # Valid password returns success
+    res = main.admin_verify(main.AdminVerifyRequest(password="7180"))
+    assert res["status"] == "ok"
+    assert res["admin_access_enabled"] is True
+
+    # Invalid password raises 401
+    with pytest.raises(HTTPException) as exc_info:
+        main.admin_verify(main.AdminVerifyRequest(password="wrong_password"))
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail["error"] == "invalid_admin_password"
+
+
 def test_validation_endpoints_accessible_in_local_admin_mode(monkeypatch):
     monkeypatch.setenv("OMNITRADE_WRITE_MODE", "local")
     monkeypatch.setenv("OMNITRADE_ADMIN", "1")
@@ -108,7 +151,8 @@ def test_cors_allows_only_declared_methods_without_credentials():
 
     assert middleware.kwargs["allow_credentials"] is False
     assert middleware.kwargs["allow_methods"] == ["GET", "POST", "DELETE"]
-    assert middleware.kwargs["allow_headers"] == ["Content-Type"]
+    assert "Content-Type" in middleware.kwargs["allow_headers"]
+    assert "x-admin-password" in middleware.kwargs["allow_headers"]
 
 
 def test_production_cors_does_not_enable_private_network_regex_by_default(monkeypatch):
