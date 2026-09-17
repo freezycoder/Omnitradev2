@@ -125,7 +125,7 @@ def test_admin_verify_endpoint():
 
     # Invalid password raises 401
     with pytest.raises(HTTPException) as exc_info:
-        main.admin_verify(main.AdminVerifyRequest(password="wrong_password"))
+        main.admin_verify(main.AdminVerifyRequest(password="bad"))
     assert exc_info.value.status_code == 401
     assert exc_info.value.detail["error"] == "invalid_admin_password"
 
