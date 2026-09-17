@@ -207,6 +207,7 @@ EXPERIMENT_PEAD = "pead"
 EXPERIMENT_FORM4 = "form4"
 EXPERIMENT_FINRA_SHORT_VOL = "finra_short_vol"
 EXPERIMENT_EARNINGS_INTELLIGENCE = "earnings_intelligence"
+EXPERIMENT_STFM_FUNDING_LIQUIDITY = "stfm_funding_liquidity"
 
 EXPERIMENTS: tuple[ShadowExperiment, ...] = (
     ShadowExperiment(
@@ -254,6 +255,17 @@ EXPERIMENTS: tuple[ShadowExperiment, ...] = (
         implemented=True,
         notes="Existing earnings-intelligence shadow layer, including PEAD filing-window evidence.",
     ),
+    ShadowExperiment(
+        experiment_id=EXPERIMENT_STFM_FUNDING_LIQUIDITY,
+        name="OFR STFM funding-liquidity overlay",
+        plumbing="domain.scoring.stfm_funding_liquidity / application.stfm_funding_liquidity_eval_service",
+        implemented=True,
+        notes=(
+            "Shadow-only long-screen throttle on a frozen OFR DVP/GCF volume-drop + "
+            "SOFR-EFFR widen flag. Nested kill versus KEEP HY OAS + NFCI and a "
+            "SOFR-only ablation. Applied impact stays 0. RORO was not discovered."
+        ),
+    ),
 )
 
 IN_FLIGHT_EXPERIMENT_IDS: tuple[str, ...] = (
@@ -261,6 +273,7 @@ IN_FLIGHT_EXPERIMENT_IDS: tuple[str, ...] = (
     EXPERIMENT_PEAD,
     EXPERIMENT_FORM4,
     EXPERIMENT_FINRA_SHORT_VOL,
+    EXPERIMENT_STFM_FUNDING_LIQUIDITY,
 )
 
 
@@ -532,6 +545,7 @@ __all__ = [
     "EXPERIMENT_FORM4",
     "EXPERIMENT_GROUP_RS",
     "EXPERIMENT_PEAD",
+    "EXPERIMENT_STFM_FUNDING_LIQUIDITY",
     "EXPERIMENTS",
     "FORBIDDEN_AUTO_PROMOTE",
     "GATE_CHECKLIST",
