@@ -309,7 +309,10 @@ class EtfService:
             raise ValueError("Select two or more ETFs to compare.")
         analyses = []
         for ticker in normalized:
-            analysis = self.build_analysis(ticker)
+            try:
+                analysis = self.build_analysis(ticker)
+            except Exception:
+                continue
             if analysis is None:
                 continue
             analyses.append(analysis)

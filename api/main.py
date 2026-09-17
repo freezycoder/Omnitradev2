@@ -828,8 +828,10 @@ def health() -> dict[str, Any]:
 
 
 @app.get("/api/capabilities")
-def api_capabilities(x_admin_password: str | None = Header(default=None)) -> dict[str, Any]:
-    return api_capabilities_snapshot(password=x_admin_password)
+def api_capabilities(x_admin_password: Any = Header(default=None)) -> dict[str, Any]:
+    if hasattr(x_admin_password, "default"):
+        x_admin_password = x_admin_password.default
+    return api_capabilities_snapshot(password=str(x_admin_password) if x_admin_password else None)
 
 
 class AdminVerifyRequest(BaseModel):
@@ -1081,10 +1083,22 @@ async def etf_compare(symbols: str = Query(..., description="Comma-separated ETF
     from application.etf_service import EtfService
 
     tickers = [item.strip() for item in symbols.split(",") if item.strip()]
-    try:
-        return await _run_service("etf_compare", lambda: EtfService().compare(tickers), timeout_seconds=120.0)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail={"error": "invalid_compare", "message": str(exc)}) from exc
+    if len(tickers) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_compare", "message": "Select two or more ETFs to compare."},
+        )
+
+    def _compare() -> Any:
+        try:
+            return EtfService().compare(tickers)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "invalid_compare", "message": str(exc)},
+            ) from exc
+
+    return await _run_service("etf_compare", _compare, timeout_seconds=120.0)
 
 
 @app.get("/api/etf/exposure/{ticker}")

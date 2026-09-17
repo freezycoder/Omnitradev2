@@ -117,6 +117,17 @@ def test_validation_endpoints_allow_access_with_admin_password_header(monkeypatc
     assert endpoint in ran
 
 
+def test_capabilities_unlocks_with_admin_password_header(monkeypatch):
+    monkeypatch.delenv("OMNITRADE_WRITE_MODE", raising=False)
+    monkeypatch.delenv("OMNITRADE_ADMIN", raising=False)
+
+    locked = main.api_capabilities()
+    assert locked["admin_access_enabled"] is False
+
+    unlocked = main.api_capabilities(x_admin_password="7180")
+    assert unlocked["admin_access_enabled"] is True
+
+
 def test_admin_verify_endpoint():
     # Valid password returns success
     res = main.admin_verify(main.AdminVerifyRequest(password="7180"))

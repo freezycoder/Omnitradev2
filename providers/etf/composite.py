@@ -57,16 +57,28 @@ class CompositeEtfProvider:
         self._yfinance = yfinance_provider or YFinanceEtfProvider()
 
     def get_profile(self, ticker: str) -> EtfProfile | None:
-        finnhub_profile = self._finnhub.get_profile(ticker) if self._finnhub.enabled else None
-        yfinance_profile = self._yfinance.get_profile(ticker)
+        try:
+            finnhub_profile = self._finnhub.get_profile(ticker) if self._finnhub.enabled else None
+        except Exception:
+            finnhub_profile = None
+        try:
+            yfinance_profile = self._yfinance.get_profile(ticker)
+        except Exception:
+            yfinance_profile = None
         return merge_profiles(finnhub_profile, yfinance_profile)
 
     def get_holdings(self, ticker: str) -> EtfHoldingsSnapshot | None:
         if self._finnhub.enabled:
-            holdings = self._finnhub.get_holdings(ticker)
+            try:
+                holdings = self._finnhub.get_holdings(ticker)
+            except Exception:
+                holdings = None
             if holdings is not None and holdings.holdings:
                 return holdings
-        return self._yfinance.get_holdings(ticker)
+        try:
+            return self._yfinance.get_holdings(ticker)
+        except Exception:
+            return None
 
     def get_historical_holdings(self, ticker: str) -> list[EtfHoldingsSnapshot]:
         return []
