@@ -9,6 +9,7 @@ import { MetricCard } from "@/components/MetricCard";
 import { SectionHeader } from "@/components/SectionHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { TerminalPanel } from "@/components/TerminalPanel";
+import { AdminAccessDenied } from "@/components/AdminAccessDenied";
 import { fetchLongTermPerformance, LongTermPerformancePayload } from "@/lib/api";
 import { asNumber, formatCurrency, formatPct, pickArray, pickRecord } from "@/lib/format";
 
@@ -47,32 +48,18 @@ const openColumns: DataTableColumn<Row>[] = [
   { key: "days_to_maturity", header: "Maturity", align: "right" }
 ];
 
-function AdminAccessDenied({ area }: { area: string }) {
-  return (
-    <div className="space-y-4">
-      <SectionHeader title={area} badge="Admin Restricted" />
-      <TerminalPanel title="Administrator Access Required" eyebrow="Restricted area">
-        <div className="space-y-3 text-sm text-[var(--muted)]">
-          <div className="text-base text-white">This area is only visible and accessible to administrators.</div>
-          <p>
-            Validation surfaces (Performance Lab, Long-Term Performance, and Calibration) are restricted to
-            authorized administrators. If this instance is running in public or read-only mode, set{" "}
-            <code className="text-[var(--accent-strong)]">OMNITRADE_ADMIN=1</code> in the server environment to enable access.
-          </p>
-        </div>
-      </TerminalPanel>
-    </div>
-  );
-}
-
 export function LongTermPerformancePage() {
   const [data, setData] = useState<LongTermPerformancePayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setError(null);
+    setAccessDenied(false);
     fetchLongTermPerformance()
       .then((payload) => {
         if (active) setData(payload);
@@ -92,10 +79,15 @@ export function LongTermPerformancePage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [refreshNonce]);
 
   if (accessDenied) {
-    return <AdminAccessDenied area="Long-Term Performance" />;
+    return (
+      <AdminAccessDenied
+        area="Long-Term Performance"
+        onUnlocked={() => setRefreshNonce((n) => n + 1)}
+      />
+    );
   }
 
   const overall = pickRecord(data?.overall);

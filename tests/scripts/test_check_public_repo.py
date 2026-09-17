@@ -37,3 +37,15 @@ def test_scan_content_reports_github_token_only_when_present():
     unsafe_code = b"GITHUB_TOKEN = \"" + b"gh" + b"p_" + b"0123456789abcdefghijklmnopqrstuvwxyz\"\n"
     findings = _scan_content("config/api.py", unsafe_code)
     assert any("GitHub token" in finding for finding in findings)
+
+
+def test_openai_key_pattern_ignores_risk_on_url_slug():
+    pattern = SECRET_PATTERNS["OpenAI API key"]
+    url = (
+        b"https://example.com/risk-on-risk-off-a-multifaceted-approach-"
+        b"to-measuring-global-investor-risk-appetite/"
+    )
+    assert pattern.search(url) is None
+
+    token = b"sk-" + b"0123456789abcdefghijklmnop"
+    assert pattern.search(token) is not None

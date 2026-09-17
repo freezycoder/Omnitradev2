@@ -34,3 +34,27 @@ def test_etf_analysis_404_when_missing(monkeypatch):
         raise AssertionError("expected 404")
     except HTTPException as exc:
         assert exc.status_code == 404
+
+
+def test_etf_compare_requires_two_symbols():
+    try:
+        asyncio.run(main.etf_compare("SPY"))
+        raise AssertionError("expected 400")
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert exc.detail["error"] == "invalid_compare"
+        assert "two or more" in exc.detail["message"].lower()
+
+
+def test_etf_compare_maps_service_valueerror_to_400(monkeypatch):
+    def boom(self, tickers):
+        raise ValueError("At least two valid ETFs are required for comparison.")
+
+    monkeypatch.setattr("application.etf_service.EtfService.compare", boom)
+    try:
+        asyncio.run(main.etf_compare("ZZZZ,YYYY"))
+        raise AssertionError("expected 400")
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert exc.detail["error"] == "invalid_compare"
+        assert "two valid" in exc.detail["message"].lower()
