@@ -10,6 +10,7 @@ export type ApiCapabilities = {
   performance_log_mutations_enabled: boolean;
   watchlist_mutations_enabled: boolean;
   admin_access_enabled?: boolean;
+  admin_password_required?: boolean;
   message: string;
 };
 
@@ -303,14 +304,63 @@ export function applyScanFreshnessPolicy(
   });
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+const ADMIN_PASSWORD_STORAGE_KEY = "omnitrade_admin_password";
+export const ADMIN_SESSION_EVENT = "omnitrade:admin-session";
+
+function notifyAdminSessionChange(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(ADMIN_SESSION_EVENT));
+}
+
+export function getStoredAdminPassword(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return sessionStorage.getItem(ADMIN_PASSWORD_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredAdminPassword(password: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(ADMIN_PASSWORD_STORAGE_KEY, password);
+  } catch {
+    // sessionStorage not available
+  }
+  notifyAdminSessionChange();
+}
+
+export function clearStoredAdminPassword(): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(ADMIN_PASSWORD_STORAGE_KEY);
+  } catch {
+    // sessionStorage not available
+  }
+  notifyAdminSessionChange();
+}
+
+type ApiRequestInit = RequestInit & { skipAdminHeader?: boolean };
+
+async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
+  const adminPassword = getStoredAdminPassword();
+  const { skipAdminHeader, headers: initHeaders, ...restInit } = init ?? {};
+  const headers = new Headers(initHeaders);
+  if (!headers.has("Accept")) {
+    headers.set("Accept", "application/json");
+  }
+  if (restInit.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (adminPassword && !skipAdminHeader && !headers.has("x-admin-password")) {
+    headers.set("x-admin-password", adminPassword);
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
     cache: "no-store",
-    headers: {
-      Accept: "application/json",
-      ...(init?.body ? { "Content-Type": "application/json" } : {})
-    },
-    ...init
+    ...restInit,
+    headers
   });
 
   if (!response.ok) {
@@ -536,6 +586,14 @@ export function fetchPerformanceLab(filters?: {
 
 export function fetchApiCapabilities(): Promise<ApiCapabilities> {
   return request<ApiCapabilities>("/api/capabilities");
+}
+
+export function verifyAdminPassword(password: string): Promise<{ status: string; admin_access_enabled: boolean; message: string }> {
+  return request<{ status: string; admin_access_enabled: boolean; message: string }>("/api/admin/verify", {
+    method: "POST",
+    body: JSON.stringify({ password }),
+    skipAdminHeader: true
+  });
 }
 
 export function logPerformanceOutcome(payload: PerformanceLogInput): Promise<{ status: string; entry: ApiRecord }> {
