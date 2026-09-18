@@ -628,52 +628,6 @@ export function removeWatchlistItem(ticker: string): Promise<{ status: string; w
   });
 }
 
-export type ForecastPoint = {
-  t: string;
-  o: number;
-  h: number;
-  l: number;
-  c: number;
-  v: number;
-};
-
-export type ForecastPayload = {
-  ticker: string;
-  model: string;
-  generated_at: string;
-  last_bar: string;
-  last_close: number;
-  horizon: number;
-  lookback: number;
-  points: ForecastPoint[];
-  bands?: { p10: number[]; p50: number[]; p90: number[] } | null;
-  expected_close?: number | null;
-  expected_return_pct?: number | null;
-  trade_level_diagnostics?: {
-    status: "aligned" | "conflict" | "unavailable";
-    stop_breach_in_p10?: boolean;
-    target_reached_by_p90?: boolean;
-    median_horizon_return_pct?: number;
-    summary: string;
-  } | null;
-  disclaimer?: string;
-  cached?: boolean;
-};
-
-export function fetchForecast(
-  ticker: string,
-  horizon = 30,
-  levels?: { entryPrice: number; stopLossPrice: number; targetPrice: number }
-): Promise<ForecastPayload> {
-  const params = new URLSearchParams({ horizon: String(horizon) });
-  if (levels) {
-    params.set("entry_price", String(levels.entryPrice));
-    params.set("stop_loss_price", String(levels.stopLossPrice));
-    params.set("target_price", String(levels.targetPrice));
-  }
-  return request<ForecastPayload>(`/api/forecast/${encodeURIComponent(ticker)}?${params.toString()}`);
-}
-
 export type EtfScreenerPayload = {
   updated_at?: string;
   source?: string;

@@ -986,63 +986,6 @@ async def ticker_analysis(
     return payload
 
 
-@app.get("/api/forecast/{ticker}")
-async def kronos_forecast(
-    ticker: str,
-    horizon: int = Query(default=30, ge=1, le=120, description="Number of future trading days to forecast."),
-    lookback: int = Query(default=400, ge=64, le=512, description="Historical daily bars sent to Kronos."),
-    refresh: bool = Query(default=False, description="Bypass the cached forecast for this ticker and horizon."),
-    entry_price: float | None = Query(default=None, gt=0),
-    stop_loss_price: float | None = Query(default=None, gt=0),
-    target_price: float | None = Query(default=None, gt=0),
-) -> Any:
-    """Read-only Kronos forecast. Never feeds scoring, recommendations, or the Performance Lab."""
-    from application.kronos_forecast_service import build_forecast
-
-    normalized_ticker = ticker.upper().strip()
-    if not normalized_ticker:
-        raise HTTPException(status_code=400, detail={"error": "invalid_ticker", "message": "Ticker is required."})
-
-    def _build() -> dict[str, Any]:
-        return build_forecast(
-            normalized_ticker,
-            horizon=horizon,
-            lookback=lookback,
-            refresh=refresh,
-            entry_price=entry_price,
-            stop_loss_price=stop_loss_price,
-            target_price=target_price,
-        )
-
-    try:
-        return await _run_service("kronos_forecast", _build, timeout_seconds=120.0)
-    except HTTPException as exc:
-        detail = exc.detail if isinstance(exc.detail, dict) else {}
-        message = str(detail.get("message", ""))
-        if exc.status_code == 500 and "Kronos" in message:
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "error": "kronos_unavailable",
-                    "ticker": normalized_ticker,
-                    "message": message,
-                },
-            ) from exc
-        raise
-
-
-@app.get("/api/forecast-health")
-def kronos_forecast_health() -> Any:
-    from providers.forecast.kronos_client import KronosUnavailable, health, kronos_enabled, kronos_service_url
-
-    if not kronos_enabled():
-        return {"enabled": False, "status": "disabled", "message": "Kronos forecasting is disabled for this deployment."}
-    try:
-        return {"enabled": True, "status": "ok", "service_url": kronos_service_url(), **health()}
-    except KronosUnavailable as exc:
-        return {"enabled": True, "status": "unavailable", "message": str(exc)}
-
-
 @app.get("/api/etf")
 async def etf_screener(
     refresh: bool = Query(default=False),
