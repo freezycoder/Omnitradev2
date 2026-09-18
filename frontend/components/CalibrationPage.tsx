@@ -13,6 +13,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { TerminalPanel } from "@/components/TerminalPanel";
 import { CalibrationPayload, fetchCalibration } from "@/lib/api";
 import { asNumber, formatPct, formatSignedPct, pickArray, pickRecord, sentenceCase } from "@/lib/format";
+import { RESEARCH_OVERLAY_IMPACT_META } from "@/lib/researchOverlay";
 
 type Row = Record<string, unknown>;
 
@@ -22,12 +23,12 @@ const shadowReadiness = (analysis: Row) => {
   const liveAllowed = promotion.live_write_allowed === true;
   return {
     value: sentenceCase(stage),
-    meta: liveAllowed ? "Live write allowed" : "Paper/shadow · cannot flip live",
+    meta: liveAllowed ? "Live write allowed" : "Paper/research · cannot flip live",
     tone: (liveAllowed ? "positive" : "warning") as "positive" | "warning"
   };
 };
 
-const calibrationColumns = (labelKey: string): DataTableColumn<Row>[] => [
+const calibrationColumns = (labelKey: string, extra: DataTableColumn<Row>[] = []): DataTableColumn<Row>[] => [
   { key: labelKey, header: "Bucket", render: (row) => <span className="font-semibold text-white">{String(row[labelKey] ?? "N/A")}</span> },
   { key: "resolved_signals", header: "Resolved", align: "right" },
   { key: "wins", header: "Wins", align: "right" },
@@ -35,7 +36,8 @@ const calibrationColumns = (labelKey: string): DataTableColumn<Row>[] => [
   { key: "win_rate", header: "Win Rate", align: "right", render: (row) => formatPct(row.win_rate, 1) },
   { key: "avg_return_pct", header: "Avg Return", align: "right", render: (row) => formatPct(row.avg_return_pct, 2) },
   { key: "expectancy_pct", header: "Gross Exp.", align: "right", render: (row) => formatPct(row.expectancy_pct, 2) },
-  { key: "net_expectancy_pct", header: "Net Exp.", align: "right", render: (row) => formatPct(row.net_expectancy_pct, 2) }
+  { key: "net_expectancy_pct", header: "Net Exp.", align: "right", render: (row) => formatPct(row.net_expectancy_pct, 2) },
+  ...extra
 ];
 
 const strategyColumns: DataTableColumn<Row>[] = [
@@ -215,10 +217,21 @@ export function CalibrationPage() {
         <div className="space-y-5">
           <CalibrationResearchWorkbench research={researchCalibration} />
 
-          <TerminalPanel title="Alternative-signal activation gate" eyebrow="SEC + classified news + FRED · shadow only">
+          <TerminalPanel title="Alternative-signal activation gate" eyebrow="SEC + classified news + FRED" researchOverlay>
             <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <MetricCard label="Directional Sample" value={String(alternativeSignalAnalysis.directional_resolved_signals ?? 0)} meta="Resolved non-neutral shadow signals" tone="info" />
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                <MetricCard
+                  label="Avg modeled impact"
+                  value={
+                    asNumber(alternativeSignalAnalysis.mean_modeled_impact) === null
+                      ? "N/A"
+                      : `${(asNumber(alternativeSignalAnalysis.mean_modeled_impact) ?? 0) > 0 ? "+" : ""}${String(alternativeSignalAnalysis.mean_modeled_impact)}`
+                  }
+                  meta={RESEARCH_OVERLAY_IMPACT_META}
+                  tone="info"
+                />
+                <MetricCard label="Applied impact" value={String(alternativeSignalAnalysis.applied_impact ?? 0)} meta="Live OmniScore is unchanged" tone="neutral" />
+                <MetricCard label="Directional Sample" value={String(alternativeSignalAnalysis.directional_resolved_signals ?? 0)} meta="Resolved non-neutral research signals" tone="info" />
                 <MetricCard label="Directional Net Exp." value={formatPct(alternativeSignalAnalysis.directional_net_expectancy_pct, 2)} meta="Impact-aligned after modeled costs" tone={(asNumber(alternativeSignalAnalysis.directional_net_expectancy_pct) ?? 0) > 0 ? "positive" : "warning"} />
                 <MetricCard label="Positive Folds" value={String(positiveValidationFolds)} meta="Chronological validation blocks" tone={positiveValidationFolds >= 2 ? "positive" : "warning"} />
                 <MetricCard label="Readiness" value={alternativeReadiness.value} meta={alternativeReadiness.meta} tone={alternativeReadiness.tone} />
@@ -237,14 +250,24 @@ export function CalibrationPage() {
                 />
                 <DataTable
                   rows={alternativeCohorts}
-                  columns={calibrationColumns("shadow_band")}
+                  columns={calibrationColumns("shadow_band", [
+                    {
+                      key: "avg_shadow_impact",
+                      header: "Avg modeled impact",
+                      align: "right",
+                      render: (row) => {
+                        const value = asNumber(row.avg_shadow_impact);
+                        return value === null ? "N/A" : `${value > 0 ? "+" : ""}${value}`;
+                      }
+                    }
+                  ])}
                   emptyLabel="New shadow observations will appear after signals resolve."
                 />
               </div>
             </div>
           </TerminalPanel>
 
-          <TerminalPanel title="Relative-strength activation gate" eyebrow="SPY + sector ETF leadership · shadow only">
+          <TerminalPanel title="Relative-strength activation gate" eyebrow="SPY + sector ETF leadership" researchOverlay>
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <MetricCard label="Directional Sample" value={String(relativeStrengthAnalysis.directional_resolved_signals ?? 0)} meta="Resolved non-neutral leadership signals" tone="info" />
@@ -273,7 +296,7 @@ export function CalibrationPage() {
             </div>
           </TerminalPanel>
 
-          <TerminalPanel title="Earnings-intelligence activation gate" eyebrow="Surprises + estimates + revisions · shadow only">
+          <TerminalPanel title="Earnings-intelligence activation gate" eyebrow="Surprises + estimates + revisions" researchOverlay>
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <MetricCard label="Directional Sample" value={String(earningsIntelligenceAnalysis.directional_resolved_signals ?? 0)} meta="Resolved non-neutral earnings signals" tone="info" />
@@ -302,7 +325,7 @@ export function CalibrationPage() {
             </div>
           </TerminalPanel>
 
-          <TerminalPanel title="PEAD 10/20/60 shadow experiment" eyebrow="Pre-registered · SPY excess · no live scoring">
+          <TerminalPanel title="PEAD 10/20/60 research experiment" eyebrow="Pre-registered · SPY excess" researchOverlay>
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 <MetricCard label="Verdict" value={String(peadExperiment.status ?? "Data blocked")} meta="Never changes live recommendations" tone={peadTone} />
