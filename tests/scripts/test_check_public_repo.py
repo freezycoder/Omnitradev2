@@ -37,3 +37,26 @@ def test_scan_content_reports_github_token_only_when_present():
     unsafe_code = b"GITHUB_TOKEN = \"" + b"gh" + b"p_" + b"0123456789abcdefghijklmnopqrstuvwxyz\"\n"
     findings = _scan_content("config/api.py", unsafe_code)
     assert any("GitHub token" in finding for finding in findings)
+
+
+def test_openai_pattern_ignores_risk_on_research_copy():
+    pattern = SECRET_PATTERNS["OpenAI API key"]
+    false_positives = [
+        b'href="https://www.kansascityfed.org/research/risk-on-risk-off-index/"\n',
+        b"risk-on-risk-off appetite is not an API credential\n",
+    ]
+    for sample in false_positives:
+        assert pattern.search(sample) is None, sample
+        assert _scan_content("config/kcroro_regime.py", sample) == []
+
+
+def test_openai_pattern_detects_standalone_keys():
+    pattern = SECRET_PATTERNS["OpenAI API key"]
+    real_keys = [
+        b"sk-" + b"a" * 48,
+        b"sk-proj-" + b"b" * 24,
+    ]
+    for token in real_keys:
+        assert pattern.search(token) is not None, token
+        findings = _scan_content("config/secrets.py", b"OPENAI_API_KEY = \"" + token + b"\"\n")
+        assert any("OpenAI API key" in finding for finding in findings)
