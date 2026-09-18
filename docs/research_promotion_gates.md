@@ -69,3 +69,4 @@ without changing live impact (still zero):
 - `pead` — earnings-intelligence post-filing 3-session move
 - `form4` — Form 4 open-market insider flow inside the SEC overlay
 - `finra_short_vol` — registered UNVERIFIED placeholder; no signal implemented
+- `stfm_funding_liquidity` — OFR STFM DVP/GCF+MMF+SOFR/EFFR funding overlay; nested kill vs HY+NFCI and SOFR-only; RORO not discovered
