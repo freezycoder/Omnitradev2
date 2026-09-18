@@ -473,6 +473,7 @@ class CalibrationService:
                 "Positive shadow impacts should outperform neutral cohorts, while negative impacts should identify weaker forward returns."
             ),
         }
+        modeled_impacts = [float(row["impact"]) for row in parsed_rows if row["impact"] is not None]
         return annotate_calibration_payload(
             {
                 "mode": "shadow",
@@ -489,6 +490,10 @@ class CalibrationService:
                     if net_directional_expectancy is not None
                     else None
                 ),
+                "mean_modeled_impact": (
+                    round(sum(modeled_impacts) / len(modeled_impacts), 2) if modeled_impacts else None
+                ),
+                "applied_impact": 0,
                 "requirements": requirements,
                 "validation_folds": fold_rows,
                 "cohorts": cohorts,
