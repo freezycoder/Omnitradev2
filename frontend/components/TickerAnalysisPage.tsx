@@ -5,7 +5,6 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ChartLegend } from "@/components/ChartLegend";
 import { DataTable, DataTableColumn, etfHref } from "@/components/DataTable";
-import { ForecastPanel } from "@/components/ForecastPanel";
 import { LoadingState } from "@/components/LoadingState";
 import { MetricCard } from "@/components/MetricCard";
 import { SectionHeader } from "@/components/SectionHeader";
@@ -192,14 +191,6 @@ export function TickerAnalysisPage() {
   const dayTrade = pickRecord(shortView.day_trade);
   const swingTrade = pickRecord(shortView.swing_trade);
   const primarySetup = shortView.primary_horizon_label === dayTrade.horizon_label ? dayTrade : swingTrade;
-  const forecastLevels = useMemo(() => {
-    const entryPrice = asNumber(primarySetup.entry_price);
-    const stopLossPrice = asNumber(primarySetup.stop_loss_price);
-    const targetPrice = asNumber(primarySetup.target_price);
-    return entryPrice && stopLossPrice && targetPrice
-      ? { entryPrice, stopLossPrice, targetPrice }
-      : undefined;
-  }, [primarySetup.entry_price, primarySetup.stop_loss_price, primarySetup.target_price]);
   const longRec = pickRecord(data?.long_term_recommendation);
   const shortRec = pickRecord(data?.short_term_recommendation);
   const accounting = pickRecord(data?.accounting_quality_view);
@@ -419,8 +410,6 @@ export function TickerAnalysisPage() {
               </div>
             </TerminalPanel>
           </div>
-
-          <ForecastPanel ticker={ticker} levels={forecastLevels} />
 
           <div className="grid gap-5 xl:grid-cols-2">
             <TerminalPanel title="Long-term thesis" eyebrow={sentenceCase(longRec.confidence)}>
