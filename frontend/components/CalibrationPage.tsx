@@ -215,6 +215,45 @@ export function CalibrationPage() {
         <div className="space-y-5">
           <CalibrationResearchWorkbench research={researchCalibration} />
 
+          <TerminalPanel title="KCRORO regime gate" eyebrow="KC Fed RORO · shadow only · no live impact">
+            <div className="space-y-3 text-sm leading-6 text-[var(--muted)]">
+              <StatusBadge tone="warning">UNVERIFIED · candidate · applied impact 0</StatusBadge>
+              <div className="text-base leading-7 text-white">
+                Daily Kansas City Fed Risk-On Risk-Off Index (FRED KCRORO) is ingested as a
+                frozen long-screen throttle: cut aggressiveness when the latest released
+                print is positive or the 20-session shock sum is positive. Nested kill
+                versus KEEP HY OAS + NFCI. Equity-leg ablation drops KCROROE.
+              </div>
+              <div>
+                Chari, Dilts Stedman, and Lundblad, 2024, Federal Reserve Bank of Kansas
+                City Research Working Paper 24-12. Positive ≈ risk-off. This panel does
+                not change live scores, ranking, or recommendations.
+              </div>
+              <div className="text-xs leading-5 text-[var(--dim)]">
+                Sources:{" "}
+                <a className="underline" href="https://fred.stlouisfed.org/series/KCRORO">
+                  FRED KCRORO
+                </a>
+                {" · "}
+                <a
+                  className="underline"
+                  href="https://www.kansascityfed.org/data-and-trends/risk-on-risk-off-index/"
+                >
+                  KC Fed RORO
+                </a>
+                {" · "}
+                <a
+                  className="underline"
+                  href="https://www.kansascityfed.org/documents/10930/RORO_Index_README.pdf"
+                >
+                  methodology README
+                </a>
+                . This product uses the FRED® API but is not endorsed or certified by the
+                Federal Reserve Bank of St. Louis.
+              </div>
+            </div>
+          </TerminalPanel>
+
           <TerminalPanel title="Alternative-signal activation gate" eyebrow="SEC + classified news + FRED · shadow only">
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
