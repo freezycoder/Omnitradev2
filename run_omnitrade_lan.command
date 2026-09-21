@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/ensure_node_path.sh"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 API_LOG="/tmp/omnitrade-api-lan.log"
 
@@ -123,5 +125,18 @@ echo "The URL was copied to your clipboard. Keep this Terminal window open."
 printf "%s" "$APP_URL" | /usr/bin/pbcopy || true
 /usr/bin/open "$APP_URL" || true
 
+if ! ensure_node_on_path; then
+  echo "Node.js was not found."
+  echo "A double-clicked .command file does not load nvm, fnm, or Homebrew from your shell profile."
+  echo "Install Node from https://nodejs.org, or open Terminal and run this after 'npm' works there."
+  read -r -p "Press Return to close..." || true
+  exit 1
+fi
+
+echo "Using npm $(command -v npm)"
 cd "$FRONTEND_DIR"
-NEXT_PUBLIC_OMNITRADE_API_URL="$API_URL" npm run dev:lan -- --port "$FRONTEND_PORT"
+if ! NEXT_PUBLIC_OMNITRADE_API_URL="$API_URL" npm run dev:lan -- --port "$FRONTEND_PORT"; then
+  echo "The Next frontend exited. See the messages above."
+  read -r -p "Press Return to close..." || true
+  exit 1
+fi
