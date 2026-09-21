@@ -19,6 +19,7 @@ import {
   TickerPayload
 } from "@/lib/api";
 import { asNumber, formatAvailable, formatCurrency, formatLargeNumber, formatPct, formatSignedPct, pickArray, pickRecord, sentenceCase } from "@/lib/format";
+import { RESEARCH_OVERLAY_DISCLAIMER } from "@/lib/researchOverlay";
 
 type Row = Record<string, unknown>;
 type DataMode = "auto" | "live" | "demo";
@@ -40,16 +41,7 @@ const newsColumns: DataTableColumn<Row>[] = [
 const alternativeComponentColumns: DataTableColumn<Row>[] = [
   { key: "label", header: "Source", render: (row) => <span className="font-semibold text-white">{String(row.label ?? "N/A")}</span> },
   { key: "status", header: "Status", render: (row) => sentenceCase(row.status) },
-  { key: "score", header: "Score", align: "right" },
-  {
-    key: "modeled_impact",
-    header: "Shadow impact",
-    align: "right",
-    render: (row) => {
-      const value = asNumber(row.modeled_impact);
-      return value === null ? "N/A" : `${value > 0 ? "+" : ""}${value}`;
-    }
-  },
+  { key: "score", header: "Research score", align: "right" },
   { key: "coverage_score", header: "Coverage", align: "right", render: (row) => formatPct(row.coverage_score, 0) },
   { key: "summary", header: "Interpretation", render: (row) => <span className="text-[var(--muted)]">{String(row.summary ?? "N/A")}</span> }
 ];
@@ -339,22 +331,22 @@ export function TickerAnalysisPage() {
             <MetricCard label="Long Score" value={String(longView.score ?? "N/A")} meta={String(longRec.label ?? "Long-term view")} tone={recommendationTone(longRec.label)} />
             <MetricCard label="Short Score" value={String(shortView.score ?? "N/A")} meta={String(shortRec.setup_type ?? shortRec.label ?? "Short-term setup")} tone={recommendationTone(shortRec.label)} />
             <MetricCard
-              label="Shadow Event Score"
+              label="Research events"
               value={String(alternativeSignal.score ?? "N/A")}
-              meta={`${String(alternativeSignal.mode ?? "shadow").toUpperCase()} · ${formatPct(alternativeSignal.coverage_score, 0)} coverage`}
-              tone={(asNumber(alternativeSignal.modeled_impact) ?? 0) > 0 ? "positive" : (asNumber(alternativeSignal.modeled_impact) ?? 0) < 0 ? "negative" : "neutral"}
+              meta={RESEARCH_OVERLAY_DISCLAIMER}
+              tone="info"
             />
             <MetricCard
-              label="Relative Strength"
+              label="Research RS"
               value={String(relativeStrength.score ?? "N/A")}
-              meta={`${sentenceCase(relativeStrength.status)} · ${formatPct(relativeStrength.coverage_score, 0)} coverage`}
-              tone={(asNumber(relativeStrength.score) ?? 50) >= 58 ? "positive" : (asNumber(relativeStrength.score) ?? 50) <= 42 ? "negative" : "neutral"}
+              meta={RESEARCH_OVERLAY_DISCLAIMER}
+              tone="info"
             />
             <MetricCard
-              label="Earnings Intel"
+              label="Research earnings"
               value={String(earningsIntelligence.score ?? "N/A")}
-              meta={`${sentenceCase(earningsIntelligence.status)} · ${formatPct(earningsIntelligence.coverage_score, 0)} coverage`}
-              tone={(asNumber(earningsIntelligence.score) ?? 50) >= 58 ? "positive" : (asNumber(earningsIntelligence.score) ?? 50) <= 42 ? "negative" : "neutral"}
+              meta={RESEARCH_OVERLAY_DISCLAIMER}
+              tone="info"
             />
             <MetricCard label="Market Cap" value={formatLargeNumber(fundamentals.marketCap)} meta={String(data?.sector ?? fundamentals.sector ?? "N/A")} tone="info" />
           </div>
@@ -435,14 +427,14 @@ export function TickerAnalysisPage() {
             </TerminalPanel>
           </div>
 
-          <TerminalPanel title="Earnings intelligence" eyebrow="Execution + consensus + revisions · shadow only">
+          <TerminalPanel title="Earnings intelligence" eyebrow="Execution + consensus + revisions" researchOverlay>
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
                 <MetricCard
-                  label="Earnings Score"
+                  label="Research score"
                   value={String(earningsIntelligence.score ?? "N/A")}
-                  meta="Zero live score impact"
-                  tone={(asNumber(earningsIntelligence.score) ?? 50) >= 58 ? "positive" : (asNumber(earningsIntelligence.score) ?? 50) <= 42 ? "negative" : "neutral"}
+                  meta="Not applied to OmniScore"
+                  tone="info"
                 />
                 <MetricCard
                   label="Next Report"
@@ -459,7 +451,7 @@ export function TickerAnalysisPage() {
                 {String(earningsIntelligence.summary ?? "Earnings intelligence is unavailable.")}
               </div>
               <DataTable rows={earningsQuarters} columns={earningsQuarterColumns} emptyLabel="No resolved earnings quarters are available." />
-              <div className="text-xs uppercase tracking-[0.14em] text-[var(--dim)]">PEAD shadow windows · research only · zero live score impact</div>
+              <div className="text-xs uppercase tracking-[0.14em] text-[var(--dim)]">PEAD research windows · not applied to OmniScore</div>
               <DataTable rows={peadEvents} columns={peadEventColumns} emptyLabel="Post-event 10/20/60 session excess will appear after the next live earnings snapshot." />
               {earningsEvidence.length ? (
                 <ul className="grid gap-2 text-sm text-[var(--muted)] md:grid-cols-2">
@@ -474,14 +466,14 @@ export function TickerAnalysisPage() {
             </div>
           </TerminalPanel>
 
-          <TerminalPanel title="Relative strength" eyebrow="Market + sector leadership · shadow only">
+          <TerminalPanel title="Relative strength" eyebrow="Market + sector leadership" researchOverlay>
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
                 <MetricCard
-                  label="Leadership Score"
+                  label="Research score"
                   value={String(relativeStrength.score ?? "N/A")}
-                  meta="Zero live score impact"
-                  tone={(asNumber(relativeStrength.score) ?? 50) >= 58 ? "positive" : (asNumber(relativeStrength.score) ?? 50) <= 42 ? "negative" : "neutral"}
+                  meta="Not applied to OmniScore"
+                  tone="info"
                 />
                 <MetricCard label={`Vs ${String(relativeStrength.market_benchmark_symbol ?? "market")}`} value={formatSignedPct(relativeStrength.market_relative_pct, 1)} meta="Weighted 1/3/6/12m excess" tone={relativeTone(relativeStrength.market_relative_pct)} />
                 <MetricCard label={`Vs ${String(relativeStrength.sector_benchmark_symbol ?? "sector")}`} value={formatSignedPct(relativeStrength.sector_relative_pct, 1)} meta="Weighted sector excess" tone={relativeTone(relativeStrength.sector_relative_pct)} />
@@ -536,13 +528,11 @@ export function TickerAnalysisPage() {
             />
           </TerminalPanel>
 
-          <TerminalPanel title="Alternative signals" eyebrow="Shadow research · zero live score impact">
+          <TerminalPanel title="Alternative signals" eyebrow="SEC + classified news + FRED" researchOverlay>
             <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <MetricCard label="Modeled Impact" value={`${(asNumber(alternativeSignal.modeled_impact) ?? 0) > 0 ? "+" : ""}${String(alternativeSignal.modeled_impact ?? 0)}`} meta={`Capped at ±${String(alternativeSignal.max_abs_impact ?? 10)}`} tone={(asNumber(alternativeSignal.modeled_impact) ?? 0) > 0 ? "positive" : (asNumber(alternativeSignal.modeled_impact) ?? 0) < 0 ? "negative" : "neutral"} />
-                <MetricCard label="Applied Impact" value={String(alternativeSignal.applied_impact ?? 0)} meta="Recommendations unchanged" tone="neutral" />
-                <MetricCard label="Coverage" value={formatPct(alternativeSignal.coverage_score, 0)} meta="Missing sources are not neutral" tone={(asNumber(alternativeSignal.coverage_score) ?? 0) >= 70 ? "info" : "warning"} />
-                <MetricCard label="State" value={sentenceCase(alternativeSignal.status)} meta="Activation requires calibration" tone="warning" />
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
+                <MetricCard label="Coverage" value={formatPct(alternativeSignal.coverage_score, 0)} meta="Missing sources are not treated as neutral evidence" tone={(asNumber(alternativeSignal.coverage_score) ?? 0) >= 70 ? "info" : "warning"} />
+                <MetricCard label="State" value={sentenceCase(alternativeSignal.status)} meta="Hypothetical impact lives on Calibration" tone="warning" />
               </div>
               <div className="border-l-2 border-[var(--accent)] pl-4 text-sm leading-6 text-[var(--muted)]">
                 {String(alternativeSignal.summary ?? "Alternative-signal research is unavailable.")}

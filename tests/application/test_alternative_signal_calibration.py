@@ -87,6 +87,8 @@ def test_alternative_signal_calibration_stays_locked_below_evidence_gate():
     assert "forward_paper" in payload["promotion"]["missing_gates"]
     assert payload["requirements"]["minimum_resolved_signals"]["passed"] is False
     assert payload["directional_net_expectancy_pct"] > 0
+    assert payload["mean_modeled_impact"] is not None
+    assert payload["applied_impact"] == 0
 
 
 def test_alternative_signal_calibration_separates_unknown_legacy_rows():
