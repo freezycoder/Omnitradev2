@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/ensure_node_path.sh"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 API_HOST="0.0.0.0"
 API_LOG="/tmp/omnitrade-api-lan.log"
@@ -104,6 +106,13 @@ wait_for_url() {
     alert "The LAN API did not start. Log: $API_LOG"
     exit 1
   fi
+
+  if ! ensure_node_on_path; then
+    echo "npm was not found. Double-clicked launchers do not load nvm or Homebrew."
+    alert "Node.js was not found. Install it from nodejs.org, or start OmniTrade from a Terminal where npm works."
+    exit 1
+  fi
+  echo "Using npm $(command -v npm)"
 
   if ! /usr/bin/curl -s --max-time 5 "$FRONTEND_URL/overview" >/dev/null 2>&1; then
     echo "Starting frontend on $FRONTEND_URL ..."

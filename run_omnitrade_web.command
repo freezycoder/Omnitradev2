@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/ensure_node_path.sh"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 API_URL="http://127.0.0.1:8788"
 FRONTEND_URL="http://127.0.0.1:3000"
@@ -61,8 +63,19 @@ if /usr/bin/curl -s --max-time 5 "$FRONTEND_URL/overview" >/dev/null 2>&1; then
   exit 0
 fi
 
+if ! ensure_node_on_path; then
+  echo "Node.js was not found."
+  echo "A double-clicked .command file does not load nvm, fnm, or Homebrew from your shell profile."
+  echo "Install Node from https://nodejs.org, or open Terminal and run this after 'npm' works there:"
+  echo "  cd \"$ROOT_DIR\""
+  echo "  ./run_omnitrade_web.command"
+  read -r -p "Press Return to close..." || true
+  exit 1
+fi
+
 echo "Starting Next frontend on $FRONTEND_URL ..."
 echo "Using API backend $API_URL"
+echo "Using npm $(command -v npm)"
 (
   for _ in $(seq 1 60); do
     if /usr/bin/curl -s --max-time 5 "$FRONTEND_URL/overview" >/dev/null 2>&1; then
@@ -74,4 +87,8 @@ echo "Using API backend $API_URL"
 ) &
 
 cd "$FRONTEND_DIR"
-NEXT_PUBLIC_OMNITRADE_API_URL="$API_URL" npm run dev
+if ! NEXT_PUBLIC_OMNITRADE_API_URL="$API_URL" npm run dev; then
+  echo "The Next frontend exited. See the messages above."
+  read -r -p "Press Return to close..." || true
+  exit 1
+fi
