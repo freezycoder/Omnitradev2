@@ -80,3 +80,6 @@ data_store/ticker_cache/*
 PROJECT_AUDIT.md
 WEB_APP_REPORT.md
 .vercel
+
+# Motion buffer gym build output
+motion-buffer-gym/dist/
