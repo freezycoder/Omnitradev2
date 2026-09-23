@@ -126,8 +126,8 @@ h2 { font-size: 1rem; }
 
 #direction-stage {
   position: relative;
-  width: min(100%, 280px);
-  height: 250px;
+  width: min(100%, 300px);
+  height: 270px;
   margin: 0 auto;
 }
 
@@ -135,9 +135,9 @@ h2 { font-size: 1rem; }
 
 .token {
   position: absolute;
-  width: 32px;
-  height: 32px;
-  margin: -16px 0 0 -16px;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -154,7 +154,7 @@ h2 { font-size: 1rem; }
 
 #numpad {
   position: absolute;
-  inset: 58px 46px;
+  inset: 68px 64px;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);

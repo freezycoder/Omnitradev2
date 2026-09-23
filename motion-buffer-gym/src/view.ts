@@ -244,7 +244,7 @@ function paintRing(entries: readonly DirectionEvent[]): void {
     token.textContent = String(entry.direction);
     const age = count - 1 - index;
     const angle = -Math.PI / 2 - (count === 1 ? 0 : (age / count) * Math.PI * 2);
-    const radius = 46;
+    const radius = 40;
     token.style.left = `${50 + Math.cos(angle) * radius}%`;
     token.style.top = `${50 + Math.sin(angle) * radius}%`;
     token.style.opacity = String(0.4 + (0.6 * (index + 1)) / count);
