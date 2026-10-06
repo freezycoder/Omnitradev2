@@ -69,3 +69,4 @@ without changing live impact (still zero):
 - `pead` — earnings-intelligence post-filing 3-session move
 - `form4` — Form 4 open-market insider flow inside the SEC overlay
 - `finra_short_vol` — registered UNVERIFIED placeholder; no signal implemented
+- `kcroro_regime_gate` — shadow daily KC Fed RORO throttle; nested kill vs KEEP HY OAS + NFCI; equity-leg ablation. Cite Chari, Dilts Stedman, Lundblad (KC Fed RWP 24-12).
