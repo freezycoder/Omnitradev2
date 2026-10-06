@@ -38,6 +38,8 @@ SEC_MAX_FORM4_DOCUMENTS = 3
 SEC_CACHE_TTL_SECONDS = 60 * 60
 
 FRED_BASE_URL = "https://api.stlouisfed.org/fred"
+ALFRED_BASE_URL = "https://api.stlouisfed.org/alfred"
+FRED_PUBLIC_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv"
 FRED_TIMEOUT_SECONDS = 10
 FRED_CACHE_TTL_SECONDS = 6 * 60 * 60
 

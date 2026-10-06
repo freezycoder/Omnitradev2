@@ -10,6 +10,7 @@ from domain.research.lifecycle import (
     EXPERIMENT_FORM4,
     EXPERIMENT_GROUP_RS,
     EXPERIMENT_PEAD,
+    EXPERIMENT_STFM_FUNDING_LIQUIDITY,
     FORBIDDEN_AUTO_PROMOTE,
     GATE_CHECKLIST,
     GateKind,
@@ -117,6 +118,7 @@ def test_in_flight_experiments_are_labeled_unverified_with_zero_live_impact() ->
         EXPERIMENT_PEAD,
         EXPERIMENT_FORM4,
         EXPERIMENT_FINRA_SHORT_VOL,
+        EXPERIMENT_STFM_FUNDING_LIQUIDITY,
     )
     tagged = in_flight_experiments()
     assert {item.experiment_id for item in tagged} == set(IN_FLIGHT_EXPERIMENT_IDS)
@@ -124,6 +126,8 @@ def test_in_flight_experiments_are_labeled_unverified_with_zero_live_impact() ->
     assert all(item.lifecycle_stage is LifecycleStage.CANDIDATE for item in tagged)
     assert all(item.live_applied_impact == 0 for item in tagged)
     assert experiment_by_id(EXPERIMENT_FINRA_SHORT_VOL).implemented is False
+    assert experiment_by_id(EXPERIMENT_STFM_FUNDING_LIQUIDITY).implemented is True
+    assert experiment_by_id(EXPERIMENT_STFM_FUNDING_LIQUIDITY).live_applied_impact == 0
 
 
 def test_gate_checklist_covers_the_required_live_set() -> None:
