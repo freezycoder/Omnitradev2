@@ -131,6 +131,10 @@ manual review. Live promotion additionally requires multiple-testing and
 forward-paper receipts plus explicit human authorization; see
 `docs/research_promotion_gates.md`. It never activates itself.
 
+A separate shadow packet (`credit-gate-v1`) ingests FRED ICE BofA HY/IG OAS as a
+regime throttle for long-biased screens. `applied_impact` stays `0`. See
+`docs/experiments/credit_hy_oas_regime_gate.md`.
+
 ## 7. Relative-Strength Shadow Layer
 
 Every live ticker analysis compares the stock with:
