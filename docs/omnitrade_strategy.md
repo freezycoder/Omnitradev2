@@ -167,6 +167,11 @@ average coverage of at least 70%. Passing the gate only makes the factor
 eligible for manual review. Live promotion still requires the full receipt
 set in `docs/research_promotion_gates.md` and is never automatic.
 
+A separate shadow universe-participation gate is documented in
+`docs/experiments/market_breadth_regime_gate.md`. It is a regime filter for
+existing single-name shadow hits, not a buy list, and does not change live
+scores, ranking, or recommendations.
+
 ## 8. Earnings-Intelligence Shadow Layer
 
 Every live ticker analysis assembles a point-in-time earnings view from:
