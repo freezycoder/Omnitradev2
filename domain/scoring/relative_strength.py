@@ -61,6 +61,9 @@ _PERIOD_SPECS = (
     ("6m", "6 months", 126, 0.35),
     ("12m", "12 months", 252, 0.25),
 )
+MARKET_RELATIVE_WEIGHT = 0.55
+SECTOR_RELATIVE_WEIGHT = 0.30
+SECTOR_LEADERSHIP_WEIGHT = 0.15
 
 
 def _clamp(value: float, lower: float, upper: float) -> float:
@@ -189,9 +192,9 @@ def build_relative_strength_view(
     )
     raw_strength = _weighted_average(
         [
-            (market_relative, 0.55),
-            (sector_relative, 0.30),
-            (sector_leadership, 0.15),
+            (market_relative, MARKET_RELATIVE_WEIGHT),
+            (sector_relative, SECTOR_RELATIVE_WEIGHT),
+            (sector_leadership, SECTOR_LEADERSHIP_WEIGHT),
         ]
     )
     coverage_score = int(round(market_weight_coverage * 60 + sector_weight_coverage * 40))
@@ -293,6 +296,82 @@ def build_unavailable_relative_strength_view(
     )
 
 
+def _rolling_return_pct(close: pd.Series, sessions: int) -> pd.Series:
+    baseline = close.shift(sessions)
+    returns = (close / baseline - 1.0) * 100.0
+    return returns.where(baseline > 0)
+
+
+def _weighted_average_frame(parts: list[tuple[pd.Series, float]]) -> pd.Series:
+    weighted_sum: pd.Series | None = None
+    weight_sum: pd.Series | None = None
+    for series, weight in parts:
+        mask = series.notna()
+        contribution = series.where(mask, 0.0) * weight
+        weights = mask.astype(float) * weight
+        weighted_sum = contribution if weighted_sum is None else weighted_sum.add(contribution, fill_value=0.0)
+        weight_sum = weights if weight_sum is None else weight_sum.add(weights, fill_value=0.0)
+    if weighted_sum is None or weight_sum is None:
+        return pd.Series(dtype=float)
+    return weighted_sum.divide(weight_sum).where(weight_sum > 0)
+
+
+def compute_raw_strength_frame(
+    stock_history: pd.DataFrame,
+    market_history: pd.DataFrame,
+    sector_history: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Point-in-time raw RS for every session, matching `build_relative_strength_view`."""
+    empty = pd.DataFrame(
+        columns=[
+            "market_relative_pct",
+            "sector_relative_pct",
+            "sector_leadership_pct",
+            "raw_strength_pct",
+        ]
+    )
+    stock_close = _as_close_series(stock_history)
+    if stock_close.empty:
+        return empty
+    as_of = pd.Timestamp(stock_close.index[-1])
+    market_close = _as_close_series(market_history, as_of=as_of)
+    sector_close = _as_close_series(
+        sector_history if sector_history is not None else pd.DataFrame(),
+        as_of=as_of,
+    )
+
+    market_excess_parts: list[tuple[pd.Series, float]] = []
+    sector_excess_parts: list[tuple[pd.Series, float]] = []
+    sector_leadership_parts: list[tuple[pd.Series, float]] = []
+    for _key, _label, sessions, weight in _PERIOD_SPECS:
+        stock_return = _rolling_return_pct(stock_close, sessions)
+        market_return = _rolling_return_pct(market_close, sessions)
+        sector_return = _rolling_return_pct(sector_close, sessions)
+        market_excess_parts.append((stock_return - market_return, weight))
+        sector_excess_parts.append((stock_return - sector_return, weight))
+        sector_leadership_parts.append((sector_return - market_return, weight))
+
+    market_relative = _weighted_average_frame(market_excess_parts)
+    sector_relative = _weighted_average_frame(sector_excess_parts)
+    sector_leadership = _weighted_average_frame(sector_leadership_parts)
+    raw_strength = _weighted_average_frame(
+        [
+            (market_relative, MARKET_RELATIVE_WEIGHT),
+            (sector_relative, SECTOR_RELATIVE_WEIGHT),
+            (sector_leadership, SECTOR_LEADERSHIP_WEIGHT),
+        ]
+    )
+    frame = pd.DataFrame(
+        {
+            "market_relative_pct": market_relative,
+            "sector_relative_pct": sector_relative,
+            "sector_leadership_pct": sector_leadership,
+            "raw_strength_pct": raw_strength,
+        }
+    )
+    return frame.dropna(how="all")
+
+
 def relative_strength_view_from_dict(payload: dict[str, Any] | None) -> RelativeStrengthView:
     if not isinstance(payload, dict):
         return build_unavailable_relative_strength_view(
@@ -325,5 +404,6 @@ __all__ = [
     "RelativeStrengthView",
     "build_relative_strength_view",
     "build_unavailable_relative_strength_view",
+    "compute_raw_strength_frame",
     "relative_strength_view_from_dict",
 ]

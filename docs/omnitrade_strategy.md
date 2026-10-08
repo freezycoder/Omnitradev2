@@ -167,6 +167,10 @@ average coverage of at least 70%. Passing the gate only makes the factor
 eligible for manual review. Live promotion still requires the full receipt
 set in `docs/research_promotion_gates.md` and is never automatic.
 
+A separate shadow industry-group RS / RRG layer is documented in
+`docs/shadow_industry_group_rs_experiment.md`. It does not change live
+scores, ranking, or recommendations.
+
 ## 8. Earnings-Intelligence Shadow Layer
 
 Every live ticker analysis assembles a point-in-time earnings view from:
