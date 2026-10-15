@@ -1,6 +1,6 @@
 streamlit>=1.44.0
 pandas>=2.2.0
-numpy>=1.26.0
+numpy>=2.5.2
 yfinance>=0.2.54
 altair>=5.0.0
 fastapi>=0.115.0
