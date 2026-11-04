@@ -1177,6 +1177,21 @@ def replace_operator_book(payload: BookReplaceRequest) -> Any:
         ) from exc
 
 
+@app.post("/api/book/rescore")
+def rescore_operator_book() -> Any:
+    _require_user_mutation("book_rescore")
+    from application.book_service import rescore
+
+    try:
+        return _json_response(rescore(_operator_book_repository()))
+    except Exception as exc:
+        log.exception("operator book rescore failed")
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "book_unavailable", "message": "The held tickers could not be scored."},
+        ) from exc
+
+
 def _operator_book_repository() -> Any:
     from config.settings import settings
     from storage.repositories.operator_book_repository import open_operator_book

@@ -35,6 +35,13 @@ log = logging.getLogger(__name__)
 Clock = Callable[[], datetime]
 RenderFunction = Callable[..., RenderedMessage]
 BookLoader = Callable[[], tuple[BookHolding, ...]]
+HeldRowsFn = Callable[[tuple[BookHolding, ...], list[dict[str, Any]]], list[dict[str, Any]]]
+
+
+def _scanner_rows_only(
+    holdings: tuple[BookHolding, ...], long_rows: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    return long_rows
 
 
 @dataclass(frozen=True)
@@ -60,6 +67,7 @@ class AlertService:
         clock: Clock,
         render_fn: RenderFunction = render_intent,
         book_loader: BookLoader | None = None,
+        held_rows: HeldRowsFn = _scanner_rows_only,
     ) -> None:
         self.config = config
         self.ledger = ledger
@@ -68,6 +76,7 @@ class AlertService:
         self.clock = clock
         self.render_fn = render_fn
         self.book_loader = book_loader
+        self.held_rows = held_rows
 
     def run(self, kind: AlertKind, *, dry_run: bool = False) -> AlertRunResult:
         recipients = self.config.alert_recipients
@@ -209,9 +218,15 @@ class AlertService:
             return ()
         long_rows = payload.get("long_term")
         short_rows = payload.get("short_term")
+        scanner_rows = long_rows if isinstance(long_rows, list) else []
+        try:
+            book_rows = self.held_rows(holdings, scanner_rows)
+        except Exception:
+            log.exception("held tickers could not be scored for the weekly mail")
+            book_rows = scanner_rows
         analysis = analyze_book(
             holdings,
-            long_rows if isinstance(long_rows, list) else [],
+            book_rows,
             short_rows if isinstance(short_rows, list) else [],
         )
         return analysis.mail_lines()

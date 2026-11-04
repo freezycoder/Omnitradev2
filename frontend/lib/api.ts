@@ -629,6 +629,15 @@ export function removeWatchlistItem(ticker: string): Promise<{ status: string; w
 }
 
 export type BookRole = "risk" | "benefit" | "neutral" | "unscored";
+export type BookPosture = "maintain" | "trim" | "rebuild" | "empty";
+export type StrategyKind = "keep" | "trim" | "review" | "research" | "cash";
+
+export type BookStrategy = {
+  kind: StrategyKind;
+  ticker: string | null;
+  title: string;
+  detail: string;
+};
 
 export type BookHolding = {
   ticker: string;
@@ -640,7 +649,11 @@ export type BookPosition = BookHolding & {
   long_term_score: number | null;
   recommendation_label: string | null;
   role: BookRole;
+  shenanigan_risk?: number | null;
+  coverage?: BookCoverage;
 };
+
+export type BookCoverage = "scan" | "portfolio" | "fund" | "none";
 
 export type BookSnapshot = {
   store: "postgres" | "file";
@@ -649,6 +662,11 @@ export type BookSnapshot = {
   summary: string;
   cash_pct: number;
   largest_weight_pct: number;
+  posture: BookPosture;
+  posture_label: string;
+  posture_reason: string;
+  risk_score: number;
+  strategies: BookStrategy[];
   risks: string[];
   benefits: string[];
   holdings: BookHolding[];
@@ -657,6 +675,10 @@ export type BookSnapshot = {
 
 export function fetchBook(): Promise<BookSnapshot> {
   return request<BookSnapshot>("/api/book");
+}
+
+export function rescoreBook(): Promise<BookSnapshot> {
+  return request<BookSnapshot>("/api/book/rescore", { method: "POST" });
 }
 
 export function saveBook(holdings: BookHolding[]): Promise<BookSnapshot> {

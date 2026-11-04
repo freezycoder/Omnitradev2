@@ -16,6 +16,7 @@ REAL_SCAN_CACHE_FILE = DATA_DIR / "latest_real_scan.json"
 LATEST_VIEW_SCAN_FILE = DATA_DIR / "latest_scan_results.json"
 WATCHLIST_FILE = DATA_DIR / "watchlist.json"
 OPERATOR_BOOK_FILE = DATA_DIR / "operator_book.json"
+HELD_SCORES_FILE = DATA_DIR / "held_ticker_scores.json"
 TICKER_CACHE_DIR = DATA_DIR / "ticker_cache"
 DEMO_DATA_FILE = DATA_DIR / "demo_data.json"
 

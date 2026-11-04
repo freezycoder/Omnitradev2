@@ -18,6 +18,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from application.alert_service import AlertConfig, AlertService
+from application.book_service import held_long_rows
 from application.scan_service import run_scan
 from config.settings import settings
 from providers.email.resend import ResendClient
@@ -56,6 +57,7 @@ def main(argv: list[str] | None = None) -> int:
         scan_fn=run_scan,
         clock=lambda: datetime.now(timezone.utc),
         book_loader=lambda: open_operator_book(settings.alert_database_url).load(),
+        held_rows=held_long_rows,
     )
     if args.kind == "status":
         due = service.weekly_due()

@@ -169,6 +169,12 @@ def _build_long_term_row(result: TickerAnalysis) -> dict[str, Any]:
     }
 
 
+def build_held_long_term_row(result: TickerAnalysis) -> dict[str, Any]:
+    """Score a held ticker with the scanner's long-term row, without the universe liquidity filters."""
+
+    return _build_long_term_row(result)
+
+
 def _build_short_term_row(result: TickerAnalysis) -> dict[str, Any]:
     day_trade = result.short_term_view.day_trade
     swing_trade = result.short_term_view.swing_trade

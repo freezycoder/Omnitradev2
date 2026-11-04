@@ -310,9 +310,10 @@ def test_weekly_mail_includes_the_saved_book() -> None:
 
     assert result.exit_code == 0
     text = mailer.sent[0].text
-    assert "Your book" in text
-    assert "AAPL is 30.0% of the book and is a Strong Buy at 88." in text
-    assert "XOM is 10.0% of the book and scores 40 (Avoid)." in text
+    assert "Your portfolio" in text
+    assert "Trim, then keep the core" in text or "Do not treat this mix as the core" in text
+    assert "Trim AAPL from 30.0% toward 20%." in text
+    assert "Review XOM before keeping 10.0%." in text
     assert "Decision support, not financial advice, and not a broker." in text
 
 
@@ -328,7 +329,7 @@ def test_a_broken_book_does_not_block_the_weekly_mail() -> None:
     ).run("weekly")
 
     assert result.exit_code == 0
-    assert "Your book" not in mailer.sent[0].text
+    assert "Your portfolio" not in mailer.sent[0].text
 
 
 def test_weekly_due_reports_an_overdue_week() -> None:
