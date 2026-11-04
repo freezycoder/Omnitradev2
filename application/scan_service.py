@@ -145,6 +145,7 @@ def _build_long_term_row(result: TickerAnalysis) -> dict[str, Any]:
         "key_risks": result.long_term_recommendation.risks[:2],
         "thesis": result.long_term_recommendation.thesis,
         "summary_reasoning": result.long_term_view.summary,
+        "current_price": result.snapshot.get("current_price"),
         "market_cap": result.fundamentals.get("marketCap"),
         "news_score": result.long_term_view.news_score,
         "news_effect": result.long_term_recommendation.news_effect,
@@ -533,8 +534,11 @@ def run_scan(
     data_mode: str = DATA_MODE_AUTO,
     universe_name: str = DEFAULT_UNIVERSE_NAME,
     cache_key: str = "default",
+    *,
+    allow_demo_fallback: bool | None = None,
 ) -> dict[str, Any]:
     tickers = universe or DEFAULT_STOCK_UNIVERSE
+    demo_fallback_enabled = ALLOW_DEMO_FALLBACK if allow_demo_fallback is None else allow_demo_fallback
 
     if data_mode == DATA_MODE_DEMO:
         demo_results, demo_failures = _run_scan_for_mode(tickers, DATA_MODE_DEMO)
@@ -580,7 +584,7 @@ def run_scan(
         long_term_outcome_evaluation_service.evaluate_open_long_term_signals()
         return cached_payload
 
-    if ALLOW_DEMO_FALLBACK:
+    if demo_fallback_enabled:
         demo_results, demo_failures = _run_scan_for_mode(tickers, DATA_MODE_DEMO)
         outcome_evaluation_service.evaluate_open_short_term_signals()
         long_term_outcome_evaluation_service.evaluate_open_long_term_signals()

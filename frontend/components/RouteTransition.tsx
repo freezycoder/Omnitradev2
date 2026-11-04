@@ -18,6 +18,7 @@ const ROUTE_ORDER = [
   "/etf",
   "/watchlist",
   "/portfolio",
+  "/book",
   "/performance",
   "/long-term-performance",
   "/calibration"

@@ -628,6 +628,44 @@ export function removeWatchlistItem(ticker: string): Promise<{ status: string; w
   });
 }
 
+export type BookRole = "risk" | "benefit" | "neutral" | "unscored";
+
+export type BookHolding = {
+  ticker: string;
+  weight_pct: number;
+};
+
+export type BookPosition = BookHolding & {
+  sector: string | null;
+  long_term_score: number | null;
+  recommendation_label: string | null;
+  role: BookRole;
+};
+
+export type BookSnapshot = {
+  store: "postgres" | "file";
+  scan_source?: string | null;
+  scan_updated_at?: string | null;
+  summary: string;
+  cash_pct: number;
+  largest_weight_pct: number;
+  risks: string[];
+  benefits: string[];
+  holdings: BookHolding[];
+  positions: BookPosition[];
+};
+
+export function fetchBook(): Promise<BookSnapshot> {
+  return request<BookSnapshot>("/api/book");
+}
+
+export function saveBook(holdings: BookHolding[]): Promise<BookSnapshot> {
+  return request<BookSnapshot>("/api/book", {
+    method: "POST",
+    body: JSON.stringify({ holdings })
+  });
+}
+
 export type EtfScreenerPayload = {
   updated_at?: string;
   source?: string;

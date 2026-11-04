@@ -28,6 +28,7 @@ PERFORMANCE_LOG_PAYLOAD = {
         "performance_log",
         "watchlist_add",
         "watchlist_delete",
+        "book_save",
     ],
 )
 def test_user_mutations_are_blocked_by_default(monkeypatch, operation):
@@ -38,6 +39,10 @@ def test_user_mutations_are_blocked_by_default(monkeypatch, operation):
             asyncio.run(main.performance_log(main.PerformanceLogMutation(**PERFORMANCE_LOG_PAYLOAD)))
         elif operation == "watchlist_add":
             main.add_watchlist_item(main.WatchlistMutation(ticker="AAPL"))
+        elif operation == "book_save":
+            main.replace_operator_book(
+                main.BookReplaceRequest(holdings=[main.BookHoldingInput(ticker="AAPL", weight_pct=10)])
+            )
         else:
             main.delete_watchlist_item("AAPL")
 

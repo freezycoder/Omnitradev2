@@ -43,7 +43,10 @@ const rawNavGroups: { label: string; index: string; adminOnly?: boolean; items: 
   {
     label: "Portfolio",
     index: "02",
-    items: [{ href: "/portfolio", label: "Portfolio", code: "BOOK", index: "05" }]
+    items: [
+      { href: "/portfolio", label: "Portfolio", code: "BOOK", index: "05" },
+      { href: "/book", label: "Your book", code: "RISK", index: "09" }
+    ]
   },
   {
     label: "Validation",

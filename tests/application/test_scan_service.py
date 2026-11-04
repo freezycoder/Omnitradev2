@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from dataclasses import replace
 
+from application import scan_service
 from application.scan_service import (
     _assign_relative_strength_percentiles,
     _earnings_intelligence_fields,
@@ -130,3 +131,30 @@ def test_rank_results_keeps_every_recommendation_tier(monkeypatch):
 
     assert [row["recommendation_label"] for row in long_rows] == ["Strong Buy", "Hold", "Avoid"]
     assert [row["recommendation_label"] for row in short_rows] == ["Strong Setup", "Neutral", "Avoid"]
+
+
+def test_allow_demo_fallback_false_returns_unavailable_instead_of_demo(monkeypatch):
+    modes: list[str] = []
+
+    def fake_run(tickers, mode):
+        modes.append(mode)
+        return [], ["AAPL"]
+
+    monkeypatch.setattr(scan_service, "_run_scan_for_mode", fake_run)
+    monkeypatch.setattr(scan_service, "_cached_real_payload", lambda *args, **kwargs: None)
+    monkeypatch.setattr(scan_service, "save_latest_view_scan", lambda payload: None)
+    monkeypatch.setattr(
+        scan_service,
+        "outcome_evaluation_service",
+        SimpleNamespace(evaluate_open_short_term_signals=lambda: None),
+    )
+    monkeypatch.setattr(
+        scan_service,
+        "long_term_outcome_evaluation_service",
+        SimpleNamespace(evaluate_open_long_term_signals=lambda: None),
+    )
+
+    payload = scan_service.run_scan(universe=["AAPL"], allow_demo_fallback=False)
+
+    assert payload["source"] == "unavailable"
+    assert modes == ["live"]
