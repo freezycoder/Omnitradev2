@@ -1,0 +1,59 @@
+name: Buy alerts
+
+on:
+  schedule:
+    # Weekday clock covering New York 09:30–16:00 in both EST and EDT.
+    # The script returns immediately outside that session.
+    - cron: "*/30 13-21 * * 1-5"
+    # Sunday 16:00, 17:00, and 18:00 UTC. The script sends once, at 18:00
+    # in OMNITRADE_ALERT_TIMEZONE (default Europe/London).
+    - cron: "0 16,17,18 * * 0"
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: Which alert to send
+        required: true
+        type: choice
+        default: both
+        options:
+          - both
+          - weekly
+          - urgent
+
+permissions:
+  contents: read
+
+concurrency:
+  group: omnitrade-alerts
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    env:
+      ENV: production
+      PYTHONPATH: ${{ github.workspace }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      OMNITRADE_ALERT_FROM: ${{ secrets.OMNITRADE_ALERT_FROM }}
+      OMNITRADE_ALERT_RECIPIENTS: ${{ secrets.OMNITRADE_ALERT_RECIPIENTS }}
+      OMNITRADE_ALERT_DATABASE_URL: ${{ secrets.OMNITRADE_ALERT_DATABASE_URL }}
+      OMNITRADE_ALERT_TIMEZONE: ${{ secrets.OMNITRADE_ALERT_TIMEZONE }}
+      FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+      FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+      SEC_EDGAR_USER_AGENT: ${{ secrets.SEC_EDGAR_USER_AGENT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Send alerts
+        run: |
+          kind="${{ github.event.inputs.kind }}"
+          if [ -z "$kind" ] || [ "$kind" = "both" ]; then
+            python scripts/send_alerts.py urgent
+            python scripts/send_alerts.py weekly
+          else
+            python scripts/send_alerts.py "$kind"
+          fi

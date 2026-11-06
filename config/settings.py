@@ -15,6 +15,8 @@ SCAN_CACHE_DIR = DATA_DIR / "scan_cache"
 REAL_SCAN_CACHE_FILE = DATA_DIR / "latest_real_scan.json"
 LATEST_VIEW_SCAN_FILE = DATA_DIR / "latest_scan_results.json"
 WATCHLIST_FILE = DATA_DIR / "watchlist.json"
+OPERATOR_BOOK_FILE = DATA_DIR / "operator_book.json"
+HELD_SCORES_FILE = DATA_DIR / "held_ticker_scores.json"
 TICKER_CACHE_DIR = DATA_DIR / "ticker_cache"
 DEMO_DATA_FILE = DATA_DIR / "demo_data.json"
 
@@ -118,6 +120,41 @@ class Settings:
     default_ticker: str
     default_data_mode_label: str
     secrets_source: str = field(default="")
+    resend_api_key: str = ""
+    alert_from: str = ""
+    alert_recipients: tuple[str, ...] = ()
+    alert_database_url: str = ""
+    alert_timezone: str = "Europe/London"
+
+
+def _pick_secret(name: str, secrets: dict[str, str], project_env: dict[str, str], env_name: str) -> str:
+    """Resolve one secret with the same order as the Finnhub key."""
+
+    project_value = project_env.get(name, "").strip()
+    if project_value and env_name != "development":
+        warnings.warn(
+            f"{name} found in project .env; ignoring it. "
+            "Move it to ~/.config/omnitrade/secrets.env or set ENV=development.",
+            stacklevel=2,
+        )
+        print(
+            f"[omnitrade] WARNING: {name} in project .env is ignored in non-dev mode.",
+            file=sys.stderr,
+            flush=True,
+        )
+    secrets_value = secrets.get(name, "").strip()
+    environment_value = os.environ.get(name, "").strip()
+    if secrets_value:
+        return secrets_value
+    if environment_value:
+        return environment_value
+    if env_name == "development" and project_value:
+        return project_value
+    return ""
+
+
+def _parse_recipients(raw: str) -> tuple[str, ...]:
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
 
 
 def _load_settings() -> Settings:
@@ -173,6 +210,16 @@ def _load_settings() -> Settings:
         or ""
     ).strip()
 
+    resend_api_key = _pick_secret("RESEND_API_KEY", secrets, project_env, env_name)
+    alert_database_url = _pick_secret("OMNITRADE_ALERT_DATABASE_URL", secrets, project_env, env_name)
+    alert_from = _pick_secret("OMNITRADE_ALERT_FROM", secrets, project_env, env_name)
+    alert_recipients = _parse_recipients(
+        _pick_secret("OMNITRADE_ALERT_RECIPIENTS", secrets, project_env, env_name)
+    )
+    alert_timezone = (
+        _pick_secret("OMNITRADE_ALERT_TIMEZONE", secrets, project_env, env_name) or "Europe/London"
+    )
+
     # Non-secret runtime preferences may still come from os.environ; these
     # are not sensitive and Streamlit launchers commonly set them.
     return Settings(
@@ -184,6 +231,11 @@ def _load_settings() -> Settings:
         default_ticker=(os.environ.get("OMNITRADE_DEFAULT_TICKER", "AAPL") or "AAPL").upper().strip() or "AAPL",
         default_data_mode_label=os.environ.get("OMNITRADE_DEFAULT_DATA_MODE_LABEL", "Auto"),
         secrets_source=secrets_source,
+        resend_api_key=resend_api_key,
+        alert_from=alert_from,
+        alert_recipients=alert_recipients,
+        alert_database_url=alert_database_url,
+        alert_timezone=alert_timezone,
     )
 
 

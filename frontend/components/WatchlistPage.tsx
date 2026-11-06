@@ -36,7 +36,7 @@ export function WatchlistPage() {
     setError(null);
     Promise.all([
       fetchWatchlist(),
-      fetchOverview({ universe: "global", dataMode: "auto", refresh: false }),
+      fetchOverview({ universe: "global", dataMode: "live", refresh: true }),
       fetchApiCapabilities().catch(() => READ_ONLY_API_CAPABILITIES)
     ])
       .then(([watchlistPayload, scanPayload, capabilityPayload]) => {

@@ -42,6 +42,15 @@ class WatchlistMutation(BaseModel):
     source: str = "frontend"
 
 
+class BookHoldingInput(BaseModel):
+    ticker: str
+    weight_pct: float
+
+
+class BookReplaceRequest(BaseModel):
+    holdings: list[BookHoldingInput] = Field(default_factory=list)
+
+
 class AdminVerifyRequest(BaseModel):
     password: str
 
@@ -1140,6 +1149,67 @@ def delete_watchlist_item(ticker: str) -> Any:
         raise HTTPException(status_code=400, detail={"error": "invalid_ticker", "message": "Ticker is required."})
     remove_from_watchlist(normalized_ticker)
     return _json_response({"status": "ok", "watchlist": _watchlist_payload()})
+
+
+@app.get("/api/book")
+def operator_book() -> Any:
+    return _json_response(_book_snapshot())
+
+
+@app.post("/api/book")
+def replace_operator_book(payload: BookReplaceRequest) -> Any:
+    _require_user_mutation("book_save")
+    from domain.portfolio.book_analysis import parse_holdings
+
+    try:
+        holdings = parse_holdings([item.model_dump() for item in payload.holdings])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"error": "invalid_book", "message": str(exc)}) from exc
+    from application.book_service import replace_holdings
+
+    try:
+        return _json_response(replace_holdings(_operator_book_repository(), holdings))
+    except Exception as exc:
+        log.exception("operator book save failed")
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "book_unavailable", "message": "The saved book could not be written."},
+        ) from exc
+
+
+@app.post("/api/book/rescore")
+def rescore_operator_book() -> Any:
+    _require_user_mutation("book_rescore")
+    from application.book_service import rescore
+
+    try:
+        return _json_response(rescore(_operator_book_repository()))
+    except Exception as exc:
+        log.exception("operator book rescore failed")
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "book_unavailable", "message": "The held tickers could not be scored."},
+        ) from exc
+
+
+def _operator_book_repository() -> Any:
+    from config.settings import settings
+    from storage.repositories.operator_book_repository import open_operator_book
+
+    return open_operator_book(settings.alert_database_url)
+
+
+def _book_snapshot() -> dict[str, Any]:
+    from application.book_service import snapshot
+
+    try:
+        return snapshot(_operator_book_repository())
+    except Exception as exc:
+        log.exception("operator book read failed")
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "book_unavailable", "message": "The saved book could not be read."},
+        ) from exc
 
 
 @app.get("/api/overview")
