@@ -98,6 +98,26 @@ def _public_snapshot(store_name: str, scan: dict[str, Any], analysis: BookAnalys
             }
             for item in analysis.strategies
         ],
+        "horizons": [
+            {
+                "key": item.key,
+                "label": item.label,
+                "value": item.value,
+                "unit": item.unit,
+                "coverage_pct": item.coverage_pct,
+                "text": item.text,
+            }
+            for item in analysis.horizons
+        ],
+        "buys": [
+            {
+                "ticker": item.ticker,
+                "score": item.score,
+                "sector": item.sector,
+                "reason": item.reason,
+            }
+            for item in analysis.buys
+        ],
         "risks": list(analysis.risks),
         "benefits": list(analysis.benefits),
         "holdings": [

@@ -63,6 +63,24 @@ class BookStrategy:
 
 
 @dataclass(frozen=True)
+class HorizonReading:
+    key: str
+    label: str
+    value: float | None
+    unit: str
+    coverage_pct: float
+    text: str
+
+
+@dataclass(frozen=True)
+class BuyIdea:
+    ticker: str
+    score: float
+    sector: str | None
+    reason: str
+
+
+@dataclass(frozen=True)
 class BookAnalysis:
     holdings: tuple[BookHolding, ...]
     positions: tuple[BookPosition, ...]
@@ -76,6 +94,8 @@ class BookAnalysis:
     posture_reason: str
     risk_score: int
     strategies: tuple[BookStrategy, ...]
+    horizons: tuple[HorizonReading, ...] = ()
+    buys: tuple[BuyIdea, ...] = ()
 
     def mail_lines(self) -> tuple[str, ...]:
         if not self.holdings:
@@ -85,10 +105,15 @@ class BookAnalysis:
             self.summary,
             f"Risk score {self.risk_score} of 100. {self.posture_label}. {self.posture_reason}",
         ]
+        for horizon in self.horizons:
+            lines.append(horizon.text)
+        if self.buys:
+            lines.append("Names that fit this book:")
+            lines.extend(f"- {item.ticker}: {item.reason}" for item in self.buys)
         if self.strategies:
             lines.append("Next research steps:")
             lines.extend(f"- {item.title}" for item in self.strategies[:4])
-        lines.append("This is a research posture from the scan and the 20% name cap. It is not a forecast of your returns.")
+        lines.append("Scores and the trailing six-month excess are not a forecast of your returns.")
         return tuple(lines)
 
 
@@ -215,6 +240,8 @@ def analyze_book(
     name_word = "name" if count == 1 else "names"
     summary = f"{count} {name_word}. Largest weight {largest:.1f}%. Cash {cash:.1f}%."
     plan = _plan(holdings, tuple(positions), sector_weights, long_by, cash, total)
+    horizons = _horizons(tuple(positions), short_by, long_by)
+    buys = _buys({holding.ticker for holding in holdings}, long_by, sector_weights)
     return BookAnalysis(
         holdings=tuple(holdings),
         positions=tuple(positions),
@@ -228,7 +255,133 @@ def analyze_book(
         posture_reason=plan.reason,
         risk_score=plan.risk_score,
         strategies=plan.strategies,
+        horizons=horizons,
+        buys=buys,
     )
+
+
+def _horizons(
+    positions: tuple[BookPosition, ...],
+    short_by: dict[str, Mapping[str, Any]],
+    long_by: dict[str, Mapping[str, Any]],
+) -> tuple[HorizonReading, ...]:
+    invested = sum(position.weight_pct for position in positions)
+    day_pairs = [
+        (position.weight_pct, score)
+        for position in positions
+        if (score := _as_float((short_by.get(position.ticker) or {}).get("short_term_score"))) is not None
+    ]
+    year_pairs = [
+        (position.weight_pct, score)
+        for position in positions
+        if (score := position.long_term_score) is not None
+    ]
+    month_pairs = [
+        (position.weight_pct, excess)
+        for position in positions
+        if (excess := _as_float((long_by.get(position.ticker) or {}).get("market_excess_6m_pct"))) is not None
+    ]
+    day_value, day_weight = _weighted(day_pairs)
+    year_value, year_weight = _weighted(year_pairs)
+    month_value, month_weight = _weighted(month_pairs)
+    return (
+        HorizonReading(
+            "days",
+            "1–15 days",
+            None if day_value is None else round(day_value, 1),
+            "score",
+            _coverage(day_weight, invested),
+            _score_text("1–15 day setup", day_value, day_weight, invested),
+        ),
+        HorizonReading(
+            "months",
+            "Trailing 6 months",
+            None if month_value is None else round(month_value, 1),
+            "excess_pct",
+            _coverage(month_weight, invested),
+            _trailing_text(month_value, month_weight, invested),
+        ),
+        HorizonReading(
+            "years",
+            "Multi-year",
+            None if year_value is None else round(year_value, 1),
+            "score",
+            _coverage(year_weight, invested),
+            _score_text("Multi-year score", year_value, year_weight, invested),
+        ),
+    )
+
+
+def _buys(
+    held: set[str],
+    long_by: dict[str, Mapping[str, Any]],
+    sector_weights: dict[str, float],
+) -> tuple[BuyIdea, ...]:
+    ideas: list[tuple[float, float, BuyIdea]] = []
+    for ticker, row in long_by.items():
+        if ticker in held or resolve_known_etf(ticker) is not None:
+            continue
+        if str(row.get("recommendation_label") or "") != _STRONG_LABEL:
+            continue
+        score = _as_float(row.get("long_term_score"))
+        if score is None or score < _STRONG_SCORE or not _impacts_are_clean(row):
+            continue
+        sector = str(row.get("sector") or "").strip() or None
+        sector_weight = sector_weights.get(sector or "", 0.0)
+        if sector_weight >= _SECTOR_LIMIT:
+            continue
+        reason = (
+            f"Strong Buy at {_score(score)}"
+            + (f". {sector} is {sector_weight:.0f}% of this book." if sector else ".")
+        )
+        ideas.append((sector_weight, -score, BuyIdea(ticker, score, sector, reason)))
+    ideas.sort(key=lambda item: (item[0], item[1], item[2].ticker))
+    return tuple(item[2] for item in ideas[:3])
+
+
+def _weighted(pairs: list[tuple[float, float]]) -> tuple[float | None, float]:
+    weight = sum(item[0] for item in pairs)
+    if weight <= 0:
+        return None, 0.0
+    return sum(item[0] * item[1] for item in pairs) / weight, weight
+
+
+def _coverage(covered: float, invested: float) -> float:
+    if invested <= 0:
+        return 0.0
+    return round(100.0 * covered / invested, 1)
+
+
+def _score_text(label: str, value: float | None, covered: float, invested: float) -> str:
+    if value is None:
+        return f"{label}: no score on the held names."
+    tone = "supportive" if value >= 80 else "mixed" if value >= 60 else "weak"
+    return (
+        f"{label} {_score(value)} ({tone}) across {_coverage(covered, invested):.0f}% of the invested book. "
+        "This is a score, not a predicted percent."
+    )
+
+
+def _trailing_text(value: float | None, covered: float, invested: float) -> str:
+    if value is None:
+        return "Trailing 6 months: no market-excess history on the held names."
+    sign = "+" if value > 0 else ""
+    return (
+        f"Trailing 6-month excess versus the market is {sign}{value:.1f} points "
+        f"on {_coverage(covered, invested):.0f}% of the invested book. That already happened. It is not a forecast."
+    )
+
+
+def _impacts_are_clean(row: Mapping[str, Any]) -> bool:
+    for key in (
+        "alternative_signal_applied_impact",
+        "relative_strength_applied_impact",
+        "earnings_intelligence_applied_impact",
+    ):
+        impact = _as_float(row.get(key))
+        if impact not in (None, 0.0):
+            return False
+    return True
 
 
 @dataclass(frozen=True)

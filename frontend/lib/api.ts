@@ -511,17 +511,19 @@ async function refreshOverview(
     };
   }
 
-  const fallback = await savedRealScanFallback(
-    universe,
-    "The refresh did not publish a newer snapshot within ten minutes."
-  );
-  if (fallback) return fallback;
+  if (dataMode !== "live") {
+    const fallback = await savedRealScanFallback(
+      universe,
+      "The refresh did not publish a newer snapshot within ten minutes."
+    );
+    if (fallback) return fallback;
+  }
   throw new Error("The refresh did not publish a newer market snapshot.");
 }
 
 export async function fetchOverview({
   universe = "global",
-  dataMode = "auto",
+  dataMode = "live",
   refresh = false,
   previousUpdatedAt
 }: {
@@ -543,7 +545,7 @@ export async function fetchOverview({
   try {
     payload = await overviewRequest(`/api/overview?${params.toString()}`);
   } catch (error) {
-    if (dataMode !== "demo") {
+    if (dataMode !== "demo" && dataMode !== "live") {
       const fallback = await savedRealScanFallback(universe, "Render did not answer quickly.");
       if (fallback) {
         return fallback;
@@ -562,7 +564,7 @@ export async function fetchOverview({
   ) ?? protectedPayload;
 }
 
-export function fetchTicker(ticker: string, dataMode = "auto"): Promise<TickerPayload> {
+export function fetchTicker(ticker: string, dataMode = "live"): Promise<TickerPayload> {
   const params = new URLSearchParams({ data_mode: dataMode });
   return request<TickerPayload>(`/api/ticker/${encodeURIComponent(ticker)}?${params.toString()}`);
 }
@@ -639,6 +641,22 @@ export type BookStrategy = {
   detail: string;
 };
 
+export type HorizonReading = {
+  key: string;
+  label: string;
+  value: number | null;
+  unit: "score" | "excess_pct";
+  coverage_pct: number;
+  text: string;
+};
+
+export type BuyIdea = {
+  ticker: string;
+  score: number;
+  sector: string | null;
+  reason: string;
+};
+
 export type BookHolding = {
   ticker: string;
   weight_pct: number;
@@ -667,6 +685,8 @@ export type BookSnapshot = {
   posture_reason: string;
   risk_score: number;
   strategies: BookStrategy[];
+  horizons: HorizonReading[];
+  buys: BuyIdea[];
   risks: string[];
   benefits: string[];
   holdings: BookHolding[];

@@ -11,6 +11,7 @@ import {
   ApiCapabilities,
   BookCoverage,
   BookPosition,
+  HorizonReading,
   BookPosture,
   BookRole,
   BookSnapshot,
@@ -22,6 +23,15 @@ import {
   rescoreBook,
   saveBook
 } from "@/lib/api";
+
+function horizonValue(horizon: HorizonReading) {
+  if (horizon.value === null) return "n/a";
+  if (horizon.unit === "excess_pct") {
+    const sign = horizon.value > 0 ? "+" : "";
+    return `${sign}${horizon.value.toFixed(1)}`;
+  }
+  return horizon.value.toFixed(0);
+}
 
 function coverageLabel(coverage: BookCoverage | undefined) {
   switch (coverage) {
@@ -412,6 +422,42 @@ export function BookPage() {
             <p className="mt-3 text-xs leading-5 text-[var(--dim)]">
               The score rises when a name exceeds the strategy engine&apos;s 20% cap, a sector exceeds 40%, or weight sits on a weak score or outside the scan. It is not a forecast of returns.
             </p>
+          </TerminalPanel>
+
+          <div className="grid gap-3 lg:grid-cols-3">
+            {(snapshot.horizons ?? []).map((horizon) => (
+              <MetricCard
+                key={horizon.key}
+                label={horizon.label}
+                value={horizonValue(horizon)}
+                meta={`${horizon.coverage_pct.toFixed(0)}% of invested book`}
+                tone={horizon.unit === "excess_pct" ? ((horizon.value ?? 0) >= 0 ? "positive" : "negative") : "info"}
+              />
+            ))}
+          </div>
+          <TerminalPanel title="Timelines" eyebrow="Scores and trailing excess, not a predicted percent">
+            <ul className="space-y-2 text-sm leading-6 text-[var(--muted)]">
+              {(snapshot.horizons ?? []).map((horizon) => (
+                <li key={horizon.key}>{horizon.text}</li>
+              ))}
+            </ul>
+          </TerminalPanel>
+
+          <TerminalPanel title="What to add" eyebrow="Strong Buys that fit the sectors you already hold">
+            {(snapshot.buys ?? []).length ? (
+              <ul className="space-y-3">
+                {snapshot.buys.map((idea) => (
+                  <li key={idea.ticker} className="border-b border-[var(--line-soft)] pb-3 last:border-0">
+                    <div className="text-sm text-white">{idea.ticker} · {idea.score}</div>
+                    <p className="mt-1 text-sm leading-6 text-[var(--muted)]">{idea.reason}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm leading-6 text-[var(--muted)]">
+                No Strong Buy outside this book fits under the sectors you already hold.
+              </p>
+            )}
           </TerminalPanel>
 
           <TerminalPanel title="Next research steps" eyebrow="Keep, trim, review, or research">

@@ -158,7 +158,7 @@ export function ScannerPage({ kind }: { kind: ScannerKind }) {
   const [data, setData] = useState<ScanPayload | null>(null);
   const [dataMode, setDataMode] = useState<DataMode>(() => {
     const value = searchParams.get("mode");
-    return value === "live" || value === "demo" ? value : "auto";
+    return value === "auto" || value === "demo" ? value : "live";
   });
   const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
   const [sortKey, setSortKey] = useState<SortKey>(() => {
@@ -208,28 +208,12 @@ export function ScannerPage({ kind }: { kind: ScannerKind }) {
     setLoading(true);
     setError(null);
     setRefreshNotice(null);
-    fetchOverview({ universe, dataMode, refresh: false })
+    fetchOverview({ universe, dataMode, refresh: dataMode === "live" })
       .then((payload) => {
         if (active) setData(payload);
       })
       .catch((err: Error) => {
-        if (!active) return;
-        if (dataMode !== "demo" && err.message.includes("API 504")) {
-          return fetchOverview({ universe, dataMode: "demo", refresh: false })
-            .then((payload) => {
-              if (active) {
-                setData({
-                  ...payload,
-                  api_note: "The live scan timed out, so this page is showing fast demo data."
-                });
-                setError(null);
-              }
-            })
-            .catch((fallbackErr: Error) => {
-              if (active) setError(fallbackErr.message);
-            });
-        }
-        setError(err.message);
+        if (active) setError(err.message);
       })
       .finally(() => {
         if (active) setLoading(false);

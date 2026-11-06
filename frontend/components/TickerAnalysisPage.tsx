@@ -144,7 +144,7 @@ export function TickerAnalysisPage() {
   const [ticker, setTicker] = useState(initialTicker);
   const [dataMode, setDataMode] = useState<DataMode>(() => {
     const value = searchParams.get("mode");
-    return value === "live" || value === "demo" ? value : "auto";
+    return value === "auto" || value === "demo" ? value : "live";
   });
   const [data, setData] = useState<TickerPayload | null>(null);
   const [error, setError] = useState<string | null>(null);

@@ -111,5 +111,31 @@ def test_a_large_quantum_fund_is_trimmed_as_a_satellite() -> None:
     assert any("satellite" in item for item in analysis.risks)
 
 
+def test_horizons_blend_scores_and_buys_avoid_a_full_sector() -> None:
+    analysis = analyze_book(
+        (BookHolding("NVDA", 40),),
+        [
+            {
+                "ticker": "NVDA",
+                "sector": "Technology",
+                "long_term_score": 90,
+                "recommendation_label": "Strong Buy",
+                "market_excess_6m_pct": 8,
+            },
+            {"ticker": "AVGO", "sector": "Technology", "long_term_score": 92, "recommendation_label": "Strong Buy"},
+            {"ticker": "LLY", "sector": "Health Care", "long_term_score": 88, "recommendation_label": "Strong Buy"},
+            {"ticker": "COST", "sector": "Health Care", "long_term_score": 91, "recommendation_label": "Strong Buy", "alternative_signal_applied_impact": 4},
+        ],
+        [{"ticker": "NVDA", "short_term_score": 70}],
+    )
+
+    by_key = {item.key: item for item in analysis.horizons}
+    assert by_key["days"].value == 70
+    assert by_key["months"].value == 8
+    assert by_key["years"].value == 90
+    assert [item.ticker for item in analysis.buys] == ["LLY"]
+    assert "Health Care is 0% of this book." in analysis.buys[0].reason
+
+
 def test_empty_book_has_no_mail_section() -> None:
     assert analyze_book((), []).mail_lines() == ()
